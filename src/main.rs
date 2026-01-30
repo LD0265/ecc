@@ -1,6 +1,7 @@
 mod cli;
 mod error;
 mod lexer;
+mod parser;
 
 use std::path::Path;
 
@@ -45,6 +46,7 @@ fn main() {
 
     let mut l = Lexer::new(&source);
     let tokens = l.tokenize();
+    let mut p = parser::Parser::new(tokens.unwrap());
 
-    println!("{:?}", tokens);
+    println!("{:#?}", p.parse());
 }

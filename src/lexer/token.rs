@@ -1,8 +1,7 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     // Keywords
     Void,
-    Int16,
     Int32,
     If,
     Else,
@@ -23,6 +22,7 @@ pub enum Token {
     RightParen,
     LeftBrace,
     RightBrace,
+    Comma,
     Semicolon,
     
     // Other

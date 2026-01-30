@@ -1,6 +1,6 @@
 mod token;
-pub use token::Token;
 use crate::error::{CompileError, Result};
+pub use token::Token;
 
 pub struct Lexer {
     source: Vec<char>,
@@ -42,29 +42,39 @@ impl Lexer {
                 self.advance();
                 Ok(Token::LeftParen)
             }
+
             ')' => {
                 self.advance();
                 Ok(Token::RightParen)
             }
+
             '{' => {
                 self.advance();
                 Ok(Token::LeftBrace)
             }
+
             '}' => {
                 self.advance();
                 Ok(Token::RightBrace)
             }
+
             ';' => {
                 self.advance();
                 Ok(Token::Semicolon)
             }
+
             '=' => {
                 self.advance();
                 Ok(Token::Equal)
             }
+
+            ',' => {
+                self.advance();
+                Ok(Token::Comma)
+            }
             '0'..='9' => self.scan_number(),
             'a'..='z' | 'A'..='Z' | '_' => self.scan_identifier(),
-            
+
             // Unknown character
             _ => Err(CompileError::LexError {
                 message: format!("Unexpected character '{}'", ch),
@@ -90,7 +100,6 @@ impl Lexer {
 
         let token = match text.as_str() {
             "void" => Token::Void,
-            "int16" => Token::Int16,
             "int32" => Token::Int32,
             "if" => Token::If,
             "else" => Token::Else,
@@ -111,6 +120,7 @@ impl Lexer {
 
         let text: String = self.source[start..self.current].iter().collect();
 
+        // parse::<i32>() should only be temporary
         let value = text.parse::<i32>().map_err(|_| CompileError::LexError {
             message: format!("Invalid number: {}", text),
             line: self.line,
