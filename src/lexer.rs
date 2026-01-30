@@ -5,7 +5,6 @@ use crate::error::{CompileError, Result};
 pub struct Lexer {
     source: Vec<char>,
     line: usize,
-    column: usize,
     current: usize,
 }
 
@@ -14,7 +13,6 @@ impl Lexer {
         Lexer {
             source: source.chars().collect(),
             line: 1,
-            column: 1,
             current: 0,
         }
     }
@@ -129,7 +127,6 @@ impl Lexer {
                 }
                 '\n' => {
                     self.line += 1;
-                    self.column = 1;
                     self.advance();
                 }
                 _ => break,
@@ -148,7 +145,6 @@ impl Lexer {
     fn advance(&mut self) -> char {
         let ch = self.peek();
         self.current += 1;
-        self.column += 1;
         ch
     }
 
