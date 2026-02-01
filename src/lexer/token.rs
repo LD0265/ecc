@@ -3,6 +3,7 @@ pub enum Token {
     // Keywords
     Void,
     Int32,
+    String,
     If,
     Else,
     While,
@@ -10,6 +11,7 @@ pub enum Token {
     
     // Literals
     Integer(i32),
+    StringLiteral(String),
     
     // Identifier (this comment is somewhat redundant)
     Identifier(String),

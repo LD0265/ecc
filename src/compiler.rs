@@ -1,7 +1,8 @@
 use crate::error;
+use crate::error::CompileError;
 use crate::lexer;
-use crate::parser;
 use crate::mips;
+use crate::parser;
 
 pub struct Compiler {
     source: String,
@@ -14,7 +15,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self) -> Result<String, error::CompileError> {
+    pub fn compile(&mut self, output_file: &str) -> Result<(), error::CompileError> {
         let mut l = lexer::Lexer::new(&self.source);
         let tokens = l.tokenize()?;
         let mut p = parser::Parser::new(tokens);
@@ -23,7 +24,18 @@ impl Compiler {
         let mut mips_gen = mips::MipsGenerator::new(program);
         let mips_code = mips_gen.generate()?;
 
-        Ok(mips_code.to_string())
+        let res = std::fs::write(output_file, mips_code.to_string());
+
+        match res {
+            Ok(_) => {
+                Ok(())
+            }
+            Err(e) => {
+                return Err(CompileError::GenericError {
+                    message: format!("Failed to write to output file: {}", e),
+                });
+            }
+        }
     }
 
     pub fn get_ast(&mut self) -> Result<parser::ast::Program, error::CompileError> {

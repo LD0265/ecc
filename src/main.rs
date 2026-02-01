@@ -10,6 +10,8 @@ use std::path::Path;
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use cli::Args;
 
+use crate::compiler::Compiler;
+
 fn main() {
     let args = Args::parse();
 
@@ -44,11 +46,13 @@ fn main() {
         Err(_) => String::from("")
     };
 
-    let mut compiler = compiler::Compiler::new(&source);
+    let mut compiler = Compiler::new(&source);
 
-    match compiler.compile() {
-        Ok(mips_code) => {
-            print!("{}", mips_code);
+    let output = args.output.as_str();
+
+    match compiler.compile(output) {
+        Ok(_) => {
+            println!("Compilation successful!");
         }
 
         Err(e) => {

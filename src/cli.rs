@@ -24,4 +24,8 @@ pub struct Args {
     /// Print AST to stdout
     #[arg(short, long)]
     pub ast: bool,
+
+    /// Name of the output file
+    #[arg(short, default_value = "out.asm")]
+    pub output: String,
 }

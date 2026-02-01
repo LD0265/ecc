@@ -8,7 +8,7 @@ pub enum CompileError {
     ParseError { message: String, line: usize },
     CodeGenError { message: String, line: usize },
     TypeError { message: String, line: usize },
-    UndefinedVariableError {message: String, line: usize},
+    GenericError { message: String},
 }
 
 impl fmt::Display for CompileError {
@@ -30,8 +30,8 @@ impl fmt::Display for CompileError {
                 write!(f, "Code generation error at line {}: {}", line, message)
             }
 
-            CompileError::UndefinedVariableError { message, line } => {
-                write!(f, "Undefined Variable Error at line {}: {}", line, message)
+            CompileError::GenericError { message } => {
+                write!(f, "{}", message)
             }
         }
     }

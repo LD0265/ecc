@@ -73,8 +73,10 @@ impl Lexer {
                 self.advance();
                 Ok(Token::Comma)
             }
+
             '0'..='9' => self.scan_number(),
             'a'..='z' | 'A'..='Z' | '_' => self.scan_identifier(),
+            '"' => self.scan_string_literal(),
 
             // Unknown character
             _ => Err(CompileError::LexError {
@@ -102,6 +104,7 @@ impl Lexer {
         let token = match text.as_str() {
             "void" => Token::Void,
             "int32" => Token::Int32,
+            "string" => Token::String,
             "if" => Token::If,
             "else" => Token::Else,
             "while" => Token::While,
@@ -128,6 +131,27 @@ impl Lexer {
         })?;
 
         Ok(Token::Integer(value))
+    }
+
+    fn scan_string_literal(&mut self) -> Result<Token> {
+        self.advance();
+        let start = self.current;
+
+        while !self.is_at_end() && self.peek() != '"' {
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            return Err(CompileError::LexError {
+                message: "Unterminated string literal".to_string(),
+                line: self.line,
+            });
+        }
+
+        let text: String = self.source[start..self.current].iter().collect();
+        self.advance();
+
+        Ok(Token::StringLiteral(text))
     }
 
     fn skip_whitespace(&mut self) {
