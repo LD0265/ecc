@@ -168,7 +168,7 @@ impl MipsGenerator {
             match var_type {
                 Type::Int32 => match expr {
                     Expr::Integer(value) => {
-                        self.emit_instruction("li", &format!("{} {}", reg.to_string(), value));
+                        self.emit_instruction("li", &format!("{}, {}", reg.to_string(), value));
 
                         self.emit_instruction(
                             "sw",
