@@ -6,8 +6,9 @@ pub type Result<T> = std::result::Result<T, CompileError>;
 pub enum CompileError {
     LexError { message: String, line: usize },
     ParseError { message: String, line: usize },
-    TypeError { message: String },
-    UndefinedVariable { name: String },
+    CodeGenError { message: String, line: usize },
+    TypeError { message: String, line: usize },
+    UndefinedVariableError {message: String, line: usize},
 }
 
 impl fmt::Display for CompileError {
@@ -16,14 +17,21 @@ impl fmt::Display for CompileError {
             CompileError::LexError { message, line } => {
                 write!(f, "Lexical error at line {}: {}", line, message)
             }
+
             CompileError::ParseError { message, line } => {
                 write!(f, "Parse error at line {}: {}", line, message)
             }
-            CompileError::TypeError { message } => {
-                write!(f, "Type error: {}", message)
+
+            CompileError::TypeError { message, line } => {
+                write!(f, "Type error at line {}: {}", line, message)
             }
-            CompileError::UndefinedVariable { name } => {
-                write!(f, "Undefined variable: {}", name)
+
+            CompileError::CodeGenError { message, line } => {
+                write!(f, "Code generation error at line {}: {}", line, message)
+            }
+
+            CompileError::UndefinedVariableError { message, line } => {
+                write!(f, "Undefined Variable Error at line {}: {}", line, message)
             }
         }
     }

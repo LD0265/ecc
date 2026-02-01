@@ -2,13 +2,13 @@ mod cli;
 mod error;
 mod lexer;
 mod parser;
+mod mips;
+mod compiler;
 
 use std::path::Path;
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use cli::Args;
-
-use crate::lexer::Lexer;
 
 fn main() {
     let args = Args::parse();
@@ -44,9 +44,27 @@ fn main() {
         Err(_) => String::from("")
     };
 
-    let mut l = Lexer::new(&source);
-    let tokens = l.tokenize();
-    let mut p = parser::Parser::new(tokens.unwrap());
+    let mut compiler = compiler::Compiler::new(&source);
 
-    println!("{:#?}", p.parse());
+    match compiler.compile() {
+        Ok(mips_code) => {
+            print!("{}", mips_code);
+        }
+
+        Err(e) => {
+            eprintln!("Error compiling: {}", e);
+        }
+    }
+
+    if args.ast {
+        match compiler.get_ast() {
+            Ok(ast) => {
+                println!("{:#?}", ast);
+            }
+
+            Err(e) => {
+                eprintln!("Error generating AST: {}", e);
+            }
+        }
+    }
 }

@@ -1,4 +1,5 @@
 mod token;
+
 use crate::error::{CompileError, Result};
 pub use token::Token;
 

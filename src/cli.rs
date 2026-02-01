@@ -20,4 +20,8 @@ pub struct Args {
     /// Include comments in the generated assembly
     #[arg(short, long)]
     pub comment: bool,
+
+    /// Print AST to stdout
+    #[arg(short, long)]
+    pub ast: bool,
 }

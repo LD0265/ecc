@@ -1,16 +1,16 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Type {
     Void,
     Int32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Integer(i32),
     Identifier(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     VariableDeclaration {
         var_type: Type,
@@ -27,20 +27,20 @@ pub enum Statement {
         body: Vec<Statement>,
     },
 
-    Return {
-        value: Option<Expr>,
-    },
+    // Return {
+    //     value: Option<Expr>,
+    // },
 
     ExprStatement(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parameter {
     pub name: String,
     pub param_type: Type,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     pub statements: Vec<Statement>,
 }

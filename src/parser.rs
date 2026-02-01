@@ -1,4 +1,4 @@
-mod ast;
+pub(crate) mod ast;
 
 use crate::error::{CompileError, Result};
 use crate::lexer::Token;
