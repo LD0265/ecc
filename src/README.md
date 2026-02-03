@@ -1,15 +1,28 @@
-## Example
+## Version Test
 
-Very basic program that I used to test this version
+Program used to test version 0.0.3
 
 ### Source Code
 
 ```c
 void main()
 {
-    int32 a = 42;
-    int32 b = a;
+    int32 n;
+    n = 10;
+
+    int32 n2;
+
+    while (n > 0) {
+        n2 = 0;
+        
+        while (n2 < n) {
+            n2 = n2 + 1;
+        }
+
+        n = n - 1;
+    }
 }
+
 ```
 ---
 ### Compiled Mips
@@ -23,16 +36,37 @@ _start:
         jal     main
         li      $v0, 10
         syscall 
-
 main:
         addi    $sp, $sp, -12
         sw      $ra, 8($sp)
 
-        li      $t0, 42
+        li      $t0, 10
         sw      $t0, 4($sp)
 
-        lw      $t0, 4($sp)
+while_1_body:
+        li      $t0, 0
         sw      $t0, 0($sp)
+
+while_0_body:
+        lw      $t0, 0($sp)
+        li      $t1, 1
+        add     $t0, $t0, $t1
+        sw      $t0, 0($sp)
+
+while_0_end:
+        lw      $t0, 0($sp)
+        lw      $t1, 4($sp)
+        blt     $t0, $t1, while_0_body
+
+        lw      $t0, 4($sp)
+        li      $t1, 1
+        sub     $t0, $t0, $t1
+        sw      $t0, 4($sp)
+
+while_1_end:
+        lw      $t0, 4($sp)
+        li      $t1, 0
+        bgt     $t0, $t1, while_1_body
 
         lw      $ra, 8($sp)
         addi    $sp, $sp, 12

@@ -40,7 +40,6 @@ fn main() {
         }
     }
 
-    // TODO: everything below this comment is VERY temporary
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(_) => String::from("")
@@ -68,6 +67,18 @@ fn main() {
 
             Err(e) => {
                 eprintln!("Error generating AST: {}", e);
+            }
+        }
+    }
+
+    if args.tokens {
+        match compiler.get_tokens() {
+            Ok(tokens) => {
+                println!("{:#?}", tokens);
+            }
+
+            Err(e) => {
+                eprintln!("Error generating tokens: {}", e);
             }
         }
     }

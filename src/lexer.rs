@@ -64,9 +64,24 @@ impl Lexer {
                 Ok(Token::Semicolon)
             }
 
-            '=' => {
+            '<' => {
                 self.advance();
-                Ok(Token::Equal)
+                Ok(Token::LessThan)
+            }
+
+            '>' => {
+                self.advance();
+                Ok(Token::GreaterThan)
+            }
+
+            '+' => {
+                self.advance();
+                Ok(Token::Plus)
+            }
+
+            '-' => {
+                self.advance();
+                Ok(Token::Minus)
             }
 
             ',' => {
@@ -74,6 +89,7 @@ impl Lexer {
                 Ok(Token::Comma)
             }
 
+            '=' => self.scan_operator(),
             '0'..='9' => self.scan_number(),
             'a'..='z' | 'A'..='Z' | '_' => self.scan_identifier(),
             '"' => self.scan_string_literal(),
@@ -152,6 +168,29 @@ impl Lexer {
         self.advance();
 
         Ok(Token::StringLiteral(text))
+    }
+
+    fn scan_operator(&mut self) -> Result<Token> {
+        self.advance();
+
+        let ch = self.peek();
+
+        match ch {
+            '=' => {
+                self.advance();
+                Ok(Token::EqualEqual)
+            }
+
+            '!' => {
+                self.advance();
+                Ok(Token::NotEqual)
+            }
+
+            _ => {
+                self.advance();
+                Ok(Token::Equal)
+            }
+        }
     }
 
     fn skip_whitespace(&mut self) {

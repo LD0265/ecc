@@ -5,7 +5,7 @@ use clap::Parser;
 **/
 #[derive(Parser, Debug)]
 #[command(
-    version = "0.0.2",
+    version = "0.0.3",
     about =
     "
 Very basic mips compiler for a custom, c-like language
@@ -24,6 +24,10 @@ pub struct Args {
     /// Print AST to stdout
     #[arg(short, long)]
     pub ast: bool,
+
+    /// Print tokens to stdout
+    #[arg(short, long)]
+    pub tokens: bool,
 
     /// Name of the output file
     #[arg(short, default_value = "out.asm")]

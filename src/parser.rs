@@ -7,11 +7,13 @@ use crate::parser::ast::*;
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+
+    num_while: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser { tokens, current: 0, num_while: 0 }
     }
 
     pub fn parse(&mut self) -> Result<Program> {
@@ -101,6 +103,7 @@ impl Parser {
                 self.advance();
                 Ok(name)
             }
+
             _ => Err(CompileError::ParseError {
                 message: format!("Expected identifier, found {:?}", self.peek()),
                 line: 0,
@@ -147,7 +150,8 @@ impl Parser {
             // We don't need these yet, but I put them here anyway
             // Token::Return => self.parse_return(),
             // Token::If => self.parse_if(),
-            // Token::While => self.parse_while(),
+            Token::While => self.parse_while(),
+
             Token::Int32 | Token::String | Token::Void => {
                 let is_function = match self.peek_ahead(2) {
                     Some(Token::LeftParen) => true,
@@ -211,10 +215,96 @@ impl Parser {
         }
     }
 
+    fn parse_assignment(&mut self, identifier: Expr) -> Result<Statement> {
+        self.advance();
+
+        let left = self.parse_expression()?;
+
+        let value = match self.peek() {
+            Token::Plus | Token::Minus => {
+                let operator = match self.peek() {
+                    Token::Plus => BinaryOperator::Add,
+                    Token::Minus => BinaryOperator::Subtract,
+                    _ => unreachable!(),
+                };
+                self.advance();
+
+                let right = self.parse_expression()?;
+
+                Expr::BinaryOp {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                }
+            }
+            _ => left,
+        };
+
+        self.expect(Token::Semicolon)?;
+
+        let name = if let Expr::Identifier(name) = identifier {
+            name
+        } else {
+            return Err(CompileError::ParseError {
+                message: "Left side of assignment must be an identifier".to_string(),
+                line: 0,
+            });
+        };
+
+        Ok(Statement::VariableAssignment {
+            identifier: name,
+            operation: value,
+        })
+    }
+
     fn parse_expression_statement(&mut self) -> Result<Statement> {
         let expr = self.parse_expression()?;
+
+        if matches!(self.peek(), Token::Equal) {
+            return self.parse_assignment(expr);
+        }
+
         self.expect(Token::Semicolon)?;
         Ok(Statement::ExprStatement(expr))
+    }
+
+    fn parse_conditional(&mut self) -> Result<Expr> {
+        let left = self.parse_expression()?;
+
+        let operator = match self.peek() {
+            Token::LessThan => BinaryOperator::LessThan,
+            Token::GreaterThan => BinaryOperator::GreaterThan,
+            _ => panic!("{:?} not implemented in parse_conditional", self.peek()),
+        };
+
+        self.advance();
+
+        let right = self.parse_expression()?;
+
+        Ok(Expr::BinaryOp {
+            left: Box::new(left),
+            operator,
+            right: Box::new(right),
+        })
+    }
+
+    fn parse_while(&mut self) -> Result<Statement> {
+        self.advance();
+
+        self.expect(Token::LeftParen)?;
+        let condition = self.parse_conditional()?;
+
+        self.expect(Token::RightParen)?;
+
+        self.expect(Token::LeftBrace)?;
+        let body = self.parse_block()?;
+        self.expect(Token::RightBrace)?;
+
+        let body_label = format!("while_{}_body", self.num_while);
+        let end_label = format!("while_{}_end", self.num_while);
+        self.num_while += 1;
+
+        Ok(Statement::While { body_label, end_label, condition, body })
     }
 
     fn populate_data_segment(&mut self, text: &Vec<Statement>) -> Vec<Statement> {

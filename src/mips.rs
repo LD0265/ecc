@@ -7,7 +7,7 @@ mod allocator;
 use crate::{
     error::CompileError,
     mips::allocator::Allocator,
-    parser::ast::{DataStorageType, Expr, Program, Statement, Type},
+    parser::ast::{BinaryOperator, DataStorageType, Expr, Program, Statement, Type},
 };
 
 pub struct MipsGenerator {
@@ -77,6 +77,7 @@ impl MipsGenerator {
     }
 
     fn check_if_main_exists(&self) -> bool {
+        // This is so much worse than just "hacky"
         for stmt in &self.program.segments.text.body {
             if let Statement::Function { name, .. } = stmt {
                 if name == "main" {
@@ -149,8 +150,22 @@ impl MipsGenerator {
                 init,
             } => self.generate_variable_declaration(var_type, identifier, init, allocator),
 
+            Statement::VariableAssignment {
+                identifier,
+                operation,
+            } => self.generate_variable_assignment(identifier, operation, allocator),
+
             Statement::Instruction { opcode, operands } => {
                 self.emit_instruction(opcode, &operands.join(", "));
+            }
+
+            Statement::While {
+                body_label,
+                end_label,
+                condition,
+                body,
+            } => {
+                self.generate_while(body_label, end_label, condition, body, allocator);
             }
 
             _ => {}
@@ -181,38 +196,28 @@ impl MipsGenerator {
                     Expr::Integer(value) => {
                         self.emit_instruction("li", &format!("{}, {}", reg.to_string(), value));
 
+                        let offset = self.get_offset_with_panic(allocator, identifier);
+
                         self.emit_instruction(
                             "sw",
-                            &format!(
-                                "{}, {}($sp)\n",
-                                reg.to_string(),
-                                allocator.get_stack_variable_offset(identifier).unwrap()
-                            ),
+                            &format!("{}, {}($sp)\n", reg.to_string(), offset),
                         );
 
                         allocator.free_temp(reg);
                     }
 
                     Expr::Identifier(name) => {
-                        let offset = match allocator.get_stack_variable_offset(name) {
-                            Some(n) => n,
-                            None => {
-                                panic!("Variable {} not found in stack", name);
-                            }
-                        };
+                        let offset_name = self.get_offset_with_panic(allocator, name);
+                        let offset_identifier = self.get_offset_with_panic(allocator, identifier);
 
                         self.emit_instruction(
                             "lw",
-                            &format!("{}, {}($sp)", reg.to_string(), offset),
+                            &format!("{}, {}($sp)", reg.to_string(), offset_name),
                         );
 
                         self.emit_instruction(
                             "sw",
-                            &format!(
-                                "{}, {}($sp)\n",
-                                reg.to_string(),
-                                allocator.get_stack_variable_offset(identifier).unwrap()
-                            ),
+                            &format!("{}, {}($sp)\n", reg.to_string(), offset_identifier),
                         );
 
                         allocator.free_temp(reg);
@@ -243,13 +248,13 @@ impl MipsGenerator {
                             &format!(
                                 "{}, {}($sp)\n",
                                 reg.to_string(),
-                                allocator.get_stack_variable_offset(identifier).unwrap()
+                                self.get_offset_with_panic(allocator, identifier),
                             ),
                         );
 
                         allocator.free_temp(reg);
                     }
-                    
+
                     Expr::Identifier(name) => {
                         let offset = match allocator.get_stack_variable_offset(name) {
                             Some(n) => n,
@@ -268,7 +273,7 @@ impl MipsGenerator {
                             &format!(
                                 "{}, {}($sp)\n",
                                 reg.to_string(),
-                                allocator.get_stack_variable_offset(identifier).unwrap()
+                                self.get_offset_with_panic(allocator, identifier),
                             ),
                         );
 
@@ -287,6 +292,266 @@ impl MipsGenerator {
                 _ => {}
             }
         }
+    }
+
+    // This one is ugly, I wrote this in a blur while I was super tired
+    // I'm sorry
+    fn generate_variable_assignment(
+        &mut self,
+        identifier: &String,
+        operation: &Expr,
+        allocator: &mut Allocator,
+    ) {
+        let reg = match allocator.allocate_temp() {
+            Some(r) => r,
+            None => {
+                panic!("Ran out of temporary registers");
+            }
+        };
+
+        match operation {
+            Expr::Integer(value) => {
+                self.emit_instruction("li", &format!("{}, {}", reg.to_string(), value));
+
+                self.emit_instruction(
+                    "sw",
+                    &format!(
+                        "{}, {}($sp)\n",
+                        reg.to_string(),
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                );
+
+                allocator.free_temp(reg);
+            }
+
+            Expr::Identifier(name) => {
+                let offset = match allocator.get_stack_variable_offset(name) {
+                    Some(n) => n,
+                    None => {
+                        panic!("Variable {} not found in stack", name);
+                    }
+                };
+
+                self.emit_instruction("lw", &format!("{}, {}($sp)", reg.to_string(), offset));
+
+                self.emit_instruction(
+                    "sw",
+                    &format!(
+                        "{}, {}($sp)\n",
+                        reg.to_string(),
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                );
+
+                allocator.free_temp(reg);
+            }
+
+            Expr::BinaryOp {
+                left,
+                operator,
+                right,
+            } => {
+                match &**left {
+                    Expr::Identifier(name) => {
+                        let offset = self.get_offset_with_panic(allocator, name);
+                        self.emit_instruction(
+                            "lw",
+                            &format!("{}, {}($sp)", reg.to_string(), offset),
+                        );
+                    }
+                    Expr::Integer(value) => {
+                        self.emit_instruction("li", &format!("{}, {}", reg.to_string(), value));
+                    }
+                    _ => panic!("Unsupported left operand in binary operation"),
+                }
+
+                let reg2 = match allocator.allocate_temp() {
+                    Some(r) => r,
+                    None => panic!("Ran out of temporary registers"),
+                };
+
+                match &**right {
+                    Expr::Identifier(name) => {
+                        let offset = self.get_offset_with_panic(allocator, name);
+                        self.emit_instruction(
+                            "lw",
+                            &format!("{}, {}($sp)", reg2.to_string(), offset),
+                        );
+                    }
+                    Expr::Integer(value) => {
+                        self.emit_instruction("li", &format!("{}, {}", reg2.to_string(), value));
+                    }
+                    _ => panic!("Unsupported right operand in binary operation"),
+                }
+
+                match operator {
+                    BinaryOperator::Add => {
+                        self.emit_instruction(
+                            "add",
+                            &format!(
+                                "{}, {}, {}",
+                                reg.to_string(),
+                                reg.to_string(),
+                                reg2.to_string()
+                            ),
+                        );
+                    }
+
+                    BinaryOperator::Subtract => {
+                        self.emit_instruction(
+                            "sub",
+                            &format!(
+                                "{}, {}, {}",
+                                reg.to_string(),
+                                reg.to_string(),
+                                reg2.to_string()
+                            ),
+                        );
+                    }
+
+                    _ => panic!("Unsupported binary operator: {:?}", operator),
+                }
+
+                self.emit_instruction(
+                    "sw",
+                    &format!(
+                        "{}, {}($sp)",
+                        reg.to_string(),
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                );
+
+                self.emit("");
+
+                allocator.free_temp(reg2);
+                allocator.free_temp(reg);
+            }
+
+            _ => {
+                CompileError::TypeError {
+                    message: "Unsupported expression in variable assignment".to_string(),
+                    line: 0,
+                };
+            }
+        }
+    }
+
+    fn generate_condition_and_branch(
+        &mut self,
+        condition: &Expr,
+        branch_label: &String,
+        allocator: &mut Allocator,
+    ) {
+        if let Expr::BinaryOp {
+            left,
+            operator,
+            right,
+        } = condition
+        {
+            let branch_type = match operator {
+                BinaryOperator::LessThan => "blt",
+                BinaryOperator::GreaterThan => "bgt",
+
+                _ => {
+                    panic!(
+                        "{:?} not implemented in generate_condition_and_branch",
+                        operator
+                    );
+                }
+            };
+
+            let left_reg = match allocator.allocate_temp() {
+                Some(reg) => reg,
+                None => {
+                    panic!("Out of temp registers in generate_condition_and_branch")
+                }
+            };
+
+            let right_reg = match allocator.allocate_temp() {
+                Some(reg) => reg,
+                None => {
+                    panic!("Out of temp registers in generate_condition_and_branch")
+                }
+            };
+
+            match &**left {
+                Expr::Identifier(name) => {
+                    let offset = match allocator.get_stack_variable_offset(name) {
+                        Some(n) => n,
+                        None => {
+                            panic!("Variable {} doesn't have offset", name);
+                        }
+                    };
+
+                    self.emit_instruction(
+                        "lw",
+                        format!("{}, {}($sp)", left_reg.to_string(), offset).as_str(),
+                    );
+                }
+
+                _ => {}
+            }
+
+            match &**right {
+                Expr::Identifier(name) => {
+                    let offset = match allocator.get_stack_variable_offset(name) {
+                        Some(n) => n,
+                        None => {
+                            panic!("Variable {} doesn't have offset", name);
+                        }
+                    };
+
+                    self.emit_instruction(
+                        "lw",
+                        format!("{}, {}($sp)", right_reg.to_string(), offset).as_str(),
+                    );
+                }
+
+                Expr::Integer(n) => {
+                    self.emit_instruction(
+                        "li",
+                        format!("{}, {}", right_reg.to_string(), *n).as_str(),
+                    );
+                }
+
+                _ => {}
+            }
+
+            self.emit_instruction(
+                branch_type,
+                format!(
+                    "{}, {}, {}",
+                    left_reg.to_string(),
+                    right_reg.to_string(),
+                    branch_label
+                )
+                .as_str(),
+            );
+
+            self.emit("");
+            allocator.free_temp(left_reg);
+            allocator.free_temp(right_reg);
+        }
+    }
+
+    fn generate_while(
+        &mut self,
+        body_label: &String,
+        end_label: &String,
+        condition: &Expr,
+        body: &Vec<Statement>,
+        allocator: &mut Allocator,
+    ) {
+        self.emit_label(body_label);
+
+        for stmt in body {
+            self.generate_statement(stmt, allocator);
+        }
+
+        self.emit_label(end_label);
+
+        self.generate_condition_and_branch(condition, body_label, allocator);
     }
 
     fn generate_data_label(&mut self, statement: &Statement) {
@@ -321,5 +586,15 @@ impl MipsGenerator {
         }
 
         None
+    }
+
+    // Needs to be changed in the future
+    fn get_offset_with_panic(&self, allocator: &Allocator, name: &String) -> usize {
+        match allocator.get_stack_variable_offset(name) {
+            Some(n) => n,
+            None => {
+                panic!("Variable {} not found in stack", name);
+            }
+        }
     }
 }

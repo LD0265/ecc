@@ -18,6 +18,12 @@ pub enum Token {
 
     // Operators
     Equal,
+    EqualEqual,
+    NotEqual,
+    LessThan,
+    GreaterThan,
+    Plus,
+    Minus,
     
     // Delimiters
     LeftParen,

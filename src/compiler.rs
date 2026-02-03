@@ -46,4 +46,11 @@ impl Compiler {
 
         Ok(program)
     }
+
+    pub fn get_tokens(&mut self) -> Result<Vec<lexer::Token>, error::CompileError> {
+        let mut l = lexer::Lexer::new(&self.source);
+        let tokens = l.tokenize()?;
+
+        Ok(tokens)
+    }
 }

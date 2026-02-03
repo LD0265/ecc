@@ -12,10 +12,28 @@ pub enum DataStorageType {
 }
 
 #[derive(Debug, Clone)]
+pub enum BinaryOperator {
+    LessThan,
+    GreaterThan,
+    LessEqual,
+    GreaterEqual,
+    Equal,
+    NotEqual,
+    Add,
+    Subtract,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Integer(i32),
     Identifier(String),
     StringLiteral(String),
+
+    BinaryOp {
+        left: Box<Expr>,
+        operator: BinaryOperator,
+        right: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -31,12 +49,28 @@ pub struct Segments {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
+    DataDeclaration {
+        label: String,
+        storage_type: DataStorageType,
+        value: String,
+    },
+
+    Instruction {
+        opcode: String,
+        operands: Vec<String>,
+    },
+
     VariableDeclaration {
         var_type: Type,
         identifier: String,
 
         // I'll add more to this later
         init: Option<Expr>,
+    },
+
+    VariableAssignment {
+        identifier: String,
+        operation: Expr,
     },
 
     Function {
@@ -47,15 +81,11 @@ pub enum Statement {
         use_stack: bool,
     },
 
-    DataDeclaration {
-        label: String,
-        storage_type: DataStorageType,
-        value: String,
-    },
-
-    Instruction {
-        opcode: String,
-        operands: Vec<String>,
+    While {
+        body_label: String,
+        end_label: String,
+        condition: Expr,
+        body: Vec<Statement>,
     },
 
     // Return {
