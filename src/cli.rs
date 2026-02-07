@@ -5,7 +5,7 @@ use clap::Parser;
 **/
 #[derive(Parser, Debug)]
 #[command(
-    version = "0.0.3",
+    version = "0.1.0 by ElEmDee",
     about =
     "
 Very basic mips compiler for a custom, c-like language

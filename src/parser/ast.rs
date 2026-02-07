@@ -1,17 +1,24 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Void,
     Int32,
+    Bool,
     String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DataStorageType {
     // I'll think about adding more later
     Asciiz,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum BuiltinFunctionType {
+    IntegerPrint,
+    StringPrint,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperator {
     LessThan,
     GreaterThan,
@@ -21,18 +28,27 @@ pub enum BinaryOperator {
     NotEqual,
     Add,
     Subtract,
+    Empty,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Integer(i32),
     Identifier(String),
     StringLiteral(String),
+    BoolLiteral(bool),
+    Empty,
 
     BinaryOp {
         left: Box<Expr>,
         operator: BinaryOperator,
         right: Box<Expr>,
+        is_not: bool
+    },
+
+    FunctionCall {
+        function_name: String,
+        arguments: Vec<Argument>,
     },
 }
 
@@ -47,7 +63,18 @@ pub struct Segments {
     pub text: Segment,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub param_type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Argument {
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     DataDeclaration {
         label: String,
@@ -63,9 +90,7 @@ pub enum Statement {
     VariableDeclaration {
         var_type: Type,
         identifier: String,
-
-        // I'll add more to this later
-        init: Option<Expr>,
+        operation: Expr,
     },
 
     VariableAssignment {
@@ -81,6 +106,16 @@ pub enum Statement {
         use_stack: bool,
     },
 
+    FunctionCall {
+        function_name: String,
+        arguments: Vec<Argument>,
+    },
+
+    BuiltinFunctionCall {
+        function_type: BuiltinFunctionType,
+        arguments: Vec<Argument>,
+    },
+
     While {
         body_label: String,
         end_label: String,
@@ -88,16 +123,26 @@ pub enum Statement {
         body: Vec<Statement>,
     },
 
-    // Return {
-    //     value: Option<Expr>,
-    // },
-    ExprStatement(Expr),
-}
+    For {
+        init: Box<Statement>,
+        body_label: String,
+        end_label: String,
+        condition: Expr,
+        var_change: Box<Statement>,
+        body: Vec<Statement>,
+    },
 
-#[derive(Debug, Clone)]
-pub struct Parameter {
-    pub name: String,
-    pub param_type: Type,
+    If {
+        label: String,
+        condition: Expr,
+        body: Vec<Statement>,
+    },
+
+    Return {
+        value: Expr,
+    },
+
+    ExprStatement(Expr),
 }
 
 #[derive(Debug, Clone)]

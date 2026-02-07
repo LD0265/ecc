@@ -64,32 +64,20 @@ impl Lexer {
                 Ok(Token::Semicolon)
             }
 
-            '<' => {
-                self.advance();
-                Ok(Token::LessThan)
-            }
-
-            '>' => {
-                self.advance();
-                Ok(Token::GreaterThan)
-            }
-
-            '+' => {
-                self.advance();
-                Ok(Token::Plus)
-            }
-
-            '-' => {
-                self.advance();
-                Ok(Token::Minus)
-            }
-
             ',' => {
                 self.advance();
                 Ok(Token::Comma)
             }
 
-            '=' => self.scan_operator(),
+            '<' => self.scan_less_than(),
+            '>' => self.scan_greater_than(),
+
+            '+' => self.scan_plus(),
+            '-' => self.scan_minus(),
+
+            '=' => self.scan_equal(),
+            '!' => self.scan_not(),
+
             '0'..='9' => self.scan_number(),
             'a'..='z' | 'A'..='Z' | '_' => self.scan_identifier(),
             '"' => self.scan_string_literal(),
@@ -120,11 +108,17 @@ impl Lexer {
         let token = match text.as_str() {
             "void" => Token::Void,
             "int32" => Token::Int32,
+            "bool" => Token::Bool,
             "string" => Token::String,
             "if" => Token::If,
+            "true" => Token::BoolLiteral(true),
+            "false" => Token::BoolLiteral(false),
             "else" => Token::Else,
             "while" => Token::While,
+            "for" => Token::For,
             "return" => Token::Return,
+            "iprint" => Token::IPrint,
+            "sprint" => Token::SPrint,
             _ => Token::Identifier(text),
         };
 
@@ -170,7 +164,7 @@ impl Lexer {
         Ok(Token::StringLiteral(text))
     }
 
-    fn scan_operator(&mut self) -> Result<Token> {
+    fn scan_equal(&mut self) -> Result<Token> {
         self.advance();
 
         let ch = self.peek();
@@ -181,14 +175,93 @@ impl Lexer {
                 Ok(Token::EqualEqual)
             }
 
-            '!' => {
+            _ => {
+                Ok(Token::Equal)
+            }
+        }
+    }
+
+    fn scan_not(&mut self) -> Result<Token> {
+        self.advance();
+
+        let ch = self.peek();
+
+        match ch {
+            '=' => {
                 self.advance();
                 Ok(Token::NotEqual)
             }
 
             _ => {
+                Ok(Token::Not)
+            }
+        }
+    }
+
+    fn scan_plus(&mut self) -> Result<Token> {
+        self.advance();
+
+        let ch = self.peek();
+
+        match ch {
+            '+' => {
                 self.advance();
-                Ok(Token::Equal)
+                Ok(Token::PlusPlus)
+            }
+
+            _ => {
+                Ok(Token::Plus)
+            }
+        }
+    }
+
+    fn scan_minus(&mut self) -> Result<Token> {
+        self.advance();
+
+        let ch = self.peek();
+
+        match ch {
+            '-' => {
+                self.advance();
+                Ok(Token::MinusMinus)
+            }
+
+            _ => {
+                Ok(Token::Minus)
+            }
+        }
+    }
+
+    fn scan_less_than(&mut self) -> Result<Token> {
+        self.advance();
+
+        let ch = self.peek();
+
+        match ch {
+            '=' => {
+                self.advance();
+                Ok(Token::LessThanEqual)
+            }
+
+            _ => {
+                Ok(Token::LessThan)
+            }
+        }
+    }
+
+    fn scan_greater_than(&mut self) -> Result<Token> {
+        self.advance();
+
+        let ch = self.peek();
+
+        match ch {
+            '=' => {
+                self.advance();
+                Ok(Token::GreaterThanEqual)
+            }
+
+            _ => {
+                Ok(Token::GreaterThan)
             }
         }
     }

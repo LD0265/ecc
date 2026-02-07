@@ -49,13 +49,15 @@ fn main() {
 
     let output = args.output.as_str();
 
-    match compiler.compile(output) {
-        Ok(_) => {
-            println!("Compilation successful!");
-        }
+    if args.tokens {
+        match compiler.get_tokens() {
+            Ok(tokens) => {
+                println!("{:#?}", tokens);
+            }
 
-        Err(e) => {
-            eprintln!("Error compiling: {}", e);
+            Err(e) => {
+                eprintln!("Error generating tokens: {}", e);
+            }
         }
     }
 
@@ -71,15 +73,13 @@ fn main() {
         }
     }
 
-    if args.tokens {
-        match compiler.get_tokens() {
-            Ok(tokens) => {
-                println!("{:#?}", tokens);
-            }
+    match compiler.compile(output) {
+        Ok(_) => {
+            println!("Compilation successful!");
+        }
 
-            Err(e) => {
-                eprintln!("Error generating tokens: {}", e);
-            }
+        Err(e) => {
+            eprintln!("Error compiling: {}", e);
         }
     }
 }
