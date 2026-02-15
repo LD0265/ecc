@@ -22,7 +22,8 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while !self.is_at_end() {
-            self.skip_whitespace();
+            self.skip_whitespace(&mut tokens);
+            self.skip_comments(&mut tokens);
 
             if self.is_at_end() {
                 break;
@@ -117,8 +118,6 @@ impl Lexer {
             "while" => Token::While,
             "for" => Token::For,
             "return" => Token::Return,
-            "iprint" => Token::IPrint,
-            "sprint" => Token::SPrint,
             _ => Token::Identifier(text),
         };
 
@@ -175,9 +174,7 @@ impl Lexer {
                 Ok(Token::EqualEqual)
             }
 
-            _ => {
-                Ok(Token::Equal)
-            }
+            _ => Ok(Token::Equal),
         }
     }
 
@@ -192,9 +189,7 @@ impl Lexer {
                 Ok(Token::NotEqual)
             }
 
-            _ => {
-                Ok(Token::Not)
-            }
+            _ => Ok(Token::Not),
         }
     }
 
@@ -209,9 +204,7 @@ impl Lexer {
                 Ok(Token::PlusPlus)
             }
 
-            _ => {
-                Ok(Token::Plus)
-            }
+            _ => Ok(Token::Plus),
         }
     }
 
@@ -226,9 +219,7 @@ impl Lexer {
                 Ok(Token::MinusMinus)
             }
 
-            _ => {
-                Ok(Token::Minus)
-            }
+            _ => Ok(Token::Minus),
         }
     }
 
@@ -243,9 +234,7 @@ impl Lexer {
                 Ok(Token::LessThanEqual)
             }
 
-            _ => {
-                Ok(Token::LessThan)
-            }
+            _ => Ok(Token::LessThan),
         }
     }
 
@@ -260,13 +249,11 @@ impl Lexer {
                 Ok(Token::GreaterThanEqual)
             }
 
-            _ => {
-                Ok(Token::GreaterThan)
-            }
+            _ => Ok(Token::GreaterThan),
         }
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self, tokens: &mut Vec<Token>) {
         while !self.is_at_end() {
             match self.peek() {
                 ' ' | '\t' => {
@@ -274,9 +261,28 @@ impl Lexer {
                 }
                 '\n' => {
                     self.line += 1;
+                    //tokens.push(Token::NewLine);
                     self.advance();
                 }
                 _ => break,
+            }
+        }
+    }
+
+    // Not proud of this implementation
+    fn skip_comments(&mut self, tokens: &mut Vec<Token>) {
+        while !self.is_at_end() {
+            if self.peek() == '/' && self.peek_ahead(1) == '/' {
+                self.advance();
+                self.advance();
+
+                while self.peek() != '\n' {
+                    self.advance();
+                }
+
+                self.skip_whitespace(tokens);
+            } else {
+                break;
             }
         }
     }
@@ -286,6 +292,14 @@ impl Lexer {
             '\0'
         } else {
             self.source[self.current]
+        }
+    }
+
+    fn peek_ahead(&self, n: usize) -> char {
+        if self.is_at_end() {
+            '\0'
+        } else {
+            self.source[self.current + n]
         }
     }
 

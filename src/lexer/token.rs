@@ -42,11 +42,8 @@ pub enum Token {
     RightBrace,
     Comma,
     Semicolon,
-
-    // Builtin Functions
-    IPrint,
-    SPrint,
     
     // Other
     Eof,
+    //NewLine,
 }

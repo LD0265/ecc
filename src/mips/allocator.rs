@@ -1,10 +1,9 @@
-use core::num;
 use std::collections::HashMap;
-use std::fmt::{self, Display};
+use std::fmt::{self};
 
 use crate::parser::ast::Statement;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug, Copy)]
 pub enum Register {
     Zero,
     AT,
@@ -173,6 +172,7 @@ impl Allocator {
         for arg_reg in arg_registers {
             if !self.used_registers.contains(&arg_reg) {
                 reg_to_use = arg_reg;
+                self.used_registers.push(arg_reg.clone());
                 break;
             }
         }
@@ -214,6 +214,14 @@ impl Allocator {
         } else {
             return VariableLocation::ArgumentRegister;
         }
+    }
+
+    pub fn get_stack_variables(&self) -> &HashMap<String, usize> {
+        &self.stack_variables
+    }
+
+    pub fn get_argument_variables(&self) -> &HashMap<String, Register> {
+        &self.argument_registers
     }
 
     // I should refactor mips.rs to use this more

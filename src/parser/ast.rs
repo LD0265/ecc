@@ -16,6 +16,8 @@ pub enum DataStorageType {
 pub enum BuiltinFunctionType {
     IntegerPrint,
     StringPrint,
+    IntegerRead,
+    StringRead,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +51,8 @@ pub enum Expr {
     FunctionCall {
         function_name: String,
         arguments: Vec<Argument>,
+        is_builtin_function: bool,
+        builtin_function_type: Option<BuiltinFunctionType>,
     },
 }
 
@@ -109,11 +113,8 @@ pub enum Statement {
     FunctionCall {
         function_name: String,
         arguments: Vec<Argument>,
-    },
-
-    BuiltinFunctionCall {
-        function_type: BuiltinFunctionType,
-        arguments: Vec<Argument>,
+        is_builtin_function: bool,
+        builtin_function_type: Option<BuiltinFunctionType>,
     },
 
     While {
@@ -143,6 +144,8 @@ pub enum Statement {
     },
 
     ExprStatement(Expr),
+
+    NewLine,
 }
 
 #[derive(Debug, Clone)]

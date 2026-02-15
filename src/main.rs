@@ -40,10 +40,7 @@ fn main() {
         }
     }
 
-    let source = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(_) => String::from("")
-    };
+    let source = std::fs::read_to_string(path).unwrap_or_else(|_| String::from(""));
 
     let mut compiler = Compiler::new(&source);
 
@@ -73,7 +70,7 @@ fn main() {
         }
     }
 
-    match compiler.compile(output) {
+    match compiler.compile(output, args.comment) {
         Ok(_) => {
             println!("Compilation successful!");
         }

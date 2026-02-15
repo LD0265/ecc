@@ -15,13 +15,13 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, output_file: &str) -> Result<(), error::CompileError> {
+    pub fn compile(&mut self, output_file: &str, emit_comments: bool) -> Result<(), error::CompileError> {
         let mut l = lexer::Lexer::new(&self.source);
         let tokens = l.tokenize()?;
         let mut p = parser::Parser::new(tokens);
         let program = p.parse()?;
 
-        let mut mips_gen = mips::MipsGenerator::new(program);
+        let mut mips_gen = mips::MipsGenerator::new(program, emit_comments);
         let mips_code = mips_gen.generate()?;
 
         let res = std::fs::write(output_file, mips_code.to_string());

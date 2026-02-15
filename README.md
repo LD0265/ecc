@@ -3,10 +3,10 @@
 
 Started learning mips at school and wanted to make this for fun
 
-Examples can be found in the example folder
+Examples can be found in the example folder and were tested using the [MARS MIPS Assembler](https://computerscience.missouristate.edu/mars-mips-simulator.htm)
 
 ## Build and Install
-Since this is a rust project you'll need cargo to build install this
+Since this is a rust project you'll need cargo to build and install this
 
 Also when you build, you might get a bunch of warnings, that's okay because this isn't a serious compiler
 
@@ -32,4 +32,3 @@ ecc --help
 ```bash
 ecc hello.ec -o hello_out.asm
 ```
-btw some of the flags don't work right now (--comment), but they will in the future

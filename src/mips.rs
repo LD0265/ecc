@@ -4,11 +4,9 @@ mod allocator;
 // This might just be the messiest file
 // But that's fine because I'm awesome
 
-use std::{env::var, fmt::Binary};
-
 use crate::{
     error::CompileError,
-    mips::allocator::{Allocator, Register, VariableLocation},
+    mips::allocator::{Allocator, VariableLocation},
     parser::ast::{
         Argument, BinaryOperator, BuiltinFunctionType, DataStorageType, Expr, Program, Statement,
         Type,
@@ -18,13 +16,17 @@ use crate::{
 pub struct MipsGenerator {
     program: Program,
     generated: String,
+    line: usize,
+    emit_comments: bool,
 }
 
 impl MipsGenerator {
-    pub fn new(program: Program) -> Self {
+    pub fn new(program: Program, emit_comments: bool) -> Self {
         MipsGenerator {
             program,
             generated: String::new(),
+            line: 1,
+            emit_comments,
         }
     }
 
@@ -33,7 +35,7 @@ impl MipsGenerator {
         if !self.check_if_main_exists() {
             return Err(CompileError::CodeGenError {
                 message: "No main function found".to_string(),
-                line: 0,
+                line: self.line,
             });
         }
 
@@ -73,9 +75,16 @@ impl MipsGenerator {
     }
 
     // {:<8} alligns the operands
-    fn emit_instruction(&mut self, opcode: &str, operands: &str) {
-        self.generated
-            .push_str(&format!("        {:<8}{}\n", opcode, operands));
+    fn emit_instruction(&mut self, opcode: &str, operands: &str, comment: &str) {
+        if self.emit_comments && !comment.is_empty() {
+            self.generated.push_str(&format!(
+                "        {:<8}{:<24}#{}\n",
+                opcode, operands, comment
+            ));
+        } else {
+            self.generated
+                .push_str(&format!("        {:<8}{}\n", opcode, operands));
+        }
     }
 
     fn emit_label(&mut self, label: &str) {
@@ -101,7 +110,7 @@ impl MipsGenerator {
             name,
             params,
             body,
-            return_type,
+            return_type: _,
             use_stack,
         } = function
         {
@@ -113,7 +122,11 @@ impl MipsGenerator {
 
                 self.emit_label(name);
 
-                self.emit_instruction("addi", &format!("$sp, $sp, -{}", stack_size));
+                self.emit_instruction(
+                    "addi",
+                    &format!("$sp, $sp, -{}", stack_size),
+                    &format!("Allocate {} bytes of stack space", stack_size),
+                );
                 allocator.add_stack_variable("$ra");
 
                 // It's okay to unwrap here because we just added $ra
@@ -123,10 +136,19 @@ impl MipsGenerator {
                         "$ra, {}($sp)\n",
                         allocator.get_stack_variable_offset("$ra").unwrap()
                     ),
+                    "Store the original return address on the stack",
                 );
 
-                for param in params {
-                    allocator.add_argument(&param.name);
+                for (i, param) in params.iter().enumerate() {
+                    allocator.add_stack_variable(&param.name);
+                    let param_reg = ["$a0", "$a1", "$a2", "$a3"][i];
+                    let offset = allocator.get_stack_variable_offset(&param.name).unwrap();
+
+                    self.emit_instruction(
+                        "sw",
+                        &format!("{}, {}($sp)", param_reg, offset),
+                        &format!("Save parameter {} from {} to stack", param.name, param_reg),
+                    );
                 }
 
                 for stmt in body {
@@ -139,6 +161,76 @@ impl MipsGenerator {
                     self.generate_statement(&stmt, &mut Allocator::new());
                 }
             }
+        }
+    }
+
+    fn generate_function_call(
+        &mut self,
+        function_name: &String,
+        arguments: &Vec<Argument>,
+        is_builtin_function: &bool,
+        builtin_function_type: &Option<BuiltinFunctionType>,
+        allocator: &mut Allocator,
+    ) {
+        if *is_builtin_function {
+            let syscall_number = match builtin_function_type {
+                Some(BuiltinFunctionType::IntegerPrint) => 1,
+                Some(BuiltinFunctionType::IntegerRead) => 5,
+                Some(BuiltinFunctionType::StringRead) => 8,
+                Some(BuiltinFunctionType::StringPrint) => 4,
+
+                None => -1,
+            };
+
+            for arg in arguments {
+                match &arg.expr {
+                    Expr::Identifier(name) => {
+                        let offset = self.get_offset_with_panic(allocator, &name);
+                        self.emit_instruction(
+                            "lw",
+                            &format!("$a0, {}($sp)", offset),
+                            &format!("Load argument {} into $a0 from {}($sp)", name, offset),
+                        );
+                    }
+
+                    Expr::Integer(n) => {
+                        self.emit_instruction(
+                            "li",
+                            &format!("$a0, {}", n),
+                            &format!("Load {} into argument register $a0", n),
+                        );
+                    }
+
+                    Expr::StringLiteral(s) => {
+                        let label = match self.get_data_label_for_string(s) {
+                            Some(l) => l,
+                            None => {
+                                panic!("Label not found for {}", s);
+                            }
+                        };
+
+                        self.emit_instruction("la", &format!("$a0, {}", label), &format!("Load the address of the string stored at {} into argument register $a0", label));
+                    }
+
+                    _ => {
+                        panic!(
+                            "expr {:?} not implemented in generate_builtin_function",
+                            arg.expr
+                        );
+                    }
+                }
+            }
+
+            self.emit_instruction(
+                "li",
+                &format!("$v0, {}", syscall_number),
+                &format!(
+                    "Load the appropriate syscall number {} into $v0",
+                    syscall_number
+                ),
+            );
+            self.emit_instruction("syscall", "", "");
+            self.emit("");
         }
     }
 
@@ -167,7 +259,11 @@ impl MipsGenerator {
                     }
                 };
 
-                self.emit_instruction("li", format!("{}, {}", temp, n).as_str());
+                self.emit_instruction(
+                    "li",
+                    &format!("{}, {}", temp, n),
+                    &format!("Load {} into temp register {}", temp, n),
+                );
             }
 
             Expr::Empty => {
@@ -181,9 +277,17 @@ impl MipsGenerator {
 
         if include_return_register {
             if reg.contains("($sp)") {
-                self.emit_instruction("lw", format!("$v0, {}", reg).as_str());
+                self.emit_instruction(
+                    "lw",
+                    &format!("$v0, {}", reg),
+                    &format!("Load value at {} into return register", reg),
+                );
             } else {
-                self.emit_instruction("move", format!("$v0, {}", reg).as_str());
+                self.emit_instruction(
+                    "move",
+                    &format!("$v0, {}", reg),
+                    &format!("Move value from register {} to return register", reg),
+                );
             }
         }
 
@@ -193,10 +297,21 @@ impl MipsGenerator {
                 "$ra, {}($sp)",
                 allocator.get_stack_variable_offset("$ra").unwrap()
             ),
+            &format!(
+                "Load stored return address from {}($sp) back into $ra",
+                allocator.get_stack_variable_offset("$ra").unwrap()
+            ),
         );
 
-        self.emit_instruction("addi", &format!("$sp, $sp, {}", allocator.get_stack_size()));
-        self.emit_instruction("jr", "$ra\n");
+        self.emit_instruction(
+            "addi",
+            &format!("$sp, $sp, {}", allocator.get_stack_size()),
+            &format!(
+                "Deallocate {} bytes of stack space",
+                allocator.get_stack_size()
+            ),
+        );
+        self.emit_instruction("jr", "$ra\n", "Jump back to the function caller's address");
     }
 
     fn generate_statement(&mut self, statement: &Statement, allocator: &mut Allocator) {
@@ -213,7 +328,7 @@ impl MipsGenerator {
             } => self.generate_variable_assignment(identifier, operation, allocator),
 
             Statement::Instruction { opcode, operands } => {
-                self.emit_instruction(opcode, &operands.join(", "));
+                self.emit_instruction(opcode, &operands.join(", "), "");
             }
 
             Statement::While {
@@ -250,10 +365,24 @@ impl MipsGenerator {
                 self.generate_return(value, allocator);
             }
 
-            Statement::BuiltinFunctionCall {
-                function_type,
+            Statement::FunctionCall {
+                function_name,
                 arguments,
-            } => self.generate_builtin_function(function_type, arguments, allocator),
+                is_builtin_function,
+                builtin_function_type,
+            } => {
+                self.generate_function_call(
+                    function_name,
+                    arguments,
+                    is_builtin_function,
+                    builtin_function_type,
+                    allocator,
+                );
+            }
+
+            Statement::NewLine => {
+                self.line += 1;
+            }
 
             _ => {}
         }
@@ -276,7 +405,7 @@ impl MipsGenerator {
                     left,
                     operator,
                     right,
-                    is_not,
+                    is_not: _,
                 } = operation
                 {
                     // Only left, basic declaration
@@ -290,12 +419,22 @@ impl MipsGenerator {
 
                         match &**left {
                             Expr::Integer(n) => {
-                                self.emit_instruction("li", &format!("{}, {}", reg, n));
+                                self.emit_instruction(
+                                    "li",
+                                    &format!("{}, {}", reg, n),
+                                    &format!("Load {} into register {}", n, reg),
+                                );
 
                                 self.emit_instruction(
                                     "sw",
                                     &format!(
                                         "{}, {}($sp)\n",
+                                        reg,
+                                        self.get_offset_with_panic(allocator, identifier)
+                                    ),
+                                    &format!(
+                                        "Store {} from register {} into stack at {}($sp)",
+                                        n,
                                         reg,
                                         self.get_offset_with_panic(allocator, identifier)
                                     ),
@@ -312,12 +451,23 @@ impl MipsGenerator {
                                         reg,
                                         self.get_offset_with_panic(allocator, name)
                                     ),
+                                    &format!(
+                                        "Load value in variable {} from {}($sp) into register {}",
+                                        name,
+                                        self.get_offset_with_panic(allocator, name),
+                                        reg
+                                    ),
                                 );
 
                                 self.emit_instruction(
                                     "sw",
                                     &format!(
                                         "{}, {}($sp)\n",
+                                        reg,
+                                        self.get_offset_with_panic(allocator, identifier)
+                                    ),
+                                    &format!(
+                                        "Store value from register {} into {}($sp)",
                                         reg,
                                         self.get_offset_with_panic(allocator, identifier)
                                     ),
@@ -329,6 +479,8 @@ impl MipsGenerator {
                             Expr::FunctionCall {
                                 function_name,
                                 arguments,
+                                is_builtin_function,
+                                builtin_function_type,
                             } => {
                                 if arguments.len() > 4 {
                                     panic!("Maximum of 4 arguments allowed for {}", function_name);
@@ -341,7 +493,11 @@ impl MipsGenerator {
                                         Expr::Integer(n) => {
                                             self.emit_instruction(
                                                 "li",
-                                                format!("{}, {}", registers[i], n).as_str(),
+                                                &format!("{}, {}", registers[i], n),
+                                                &format!(
+                                                    "Load {} into register {}",
+                                                    n, registers[i]
+                                                ),
                                             );
                                         }
 
@@ -350,8 +506,11 @@ impl MipsGenerator {
                                                 self.get_offset_with_panic(allocator, &name);
                                             self.emit_instruction(
                                                 "lw",
-                                                format!("{}, {}($sp)", registers[i], offset)
-                                                    .as_str(),
+                                                &format!("{}, {}($sp)", registers[i], offset),
+                                                &format!(
+                                                    "Load value at {}($sp) into {}",
+                                                    offset, registers[i]
+                                                ),
                                             );
                                         }
 
@@ -364,12 +523,39 @@ impl MipsGenerator {
                                     }
                                 }
 
-                                self.emit_instruction("jal", function_name);
+                                if *is_builtin_function {
+                                    let syscall_number = match builtin_function_type {
+                                        Some(BuiltinFunctionType::IntegerPrint) => 1,
+                                        Some(BuiltinFunctionType::IntegerRead) => 5,
+                                        Some(BuiltinFunctionType::StringRead) => 8,
+                                        Some(BuiltinFunctionType::StringPrint) => 4,
+
+                                        None => -1,
+                                    };
+
+                                    self.emit_instruction(
+                                        "li",
+                                        &format!("$v0, {}", syscall_number),
+                                        "Load syscall number into $a0",
+                                    );
+
+                                    self.emit_instruction("syscall", "", "");
+                                } else {
+                                    self.emit_instruction(
+                                        "jal",
+                                        function_name,
+                                        &format!("Call function {}", function_name),
+                                    );
+                                }
 
                                 self.emit_instruction(
                                     "sw",
                                     &format!(
                                         "$v0, {}($sp)\n",
+                                        self.get_offset_with_panic(allocator, identifier)
+                                    ),
+                                    &format!(
+                                        "Store value in register $v0 into {}($sp)",
                                         self.get_offset_with_panic(allocator, identifier)
                                     ),
                                 );
@@ -401,7 +587,8 @@ impl MipsGenerator {
                             Expr::Integer(n) => {
                                 self.emit_instruction(
                                     "li",
-                                    format!("{}, {}", left_temp, n).as_str(),
+                                    &format!("{}, {}", left_temp, n),
+                                    &format!("Load {} into left register {}", n, left_temp),
                                 );
                             }
 
@@ -411,7 +598,11 @@ impl MipsGenerator {
                                     Some(reg) => {
                                         self.emit_instruction(
                                             "lw",
-                                            format!("{}, {}", left_temp, reg).as_str(),
+                                            &format!("{}, {}", left_temp, reg),
+                                            &format!(
+                                                "Load value from {} into left register {}",
+                                                reg, left_temp
+                                            ),
                                         );
                                     }
                                     None => {
@@ -435,7 +626,8 @@ impl MipsGenerator {
                             Expr::Integer(n) => {
                                 self.emit_instruction(
                                     "li",
-                                    format!("{}, {}", right_temp, n).as_str(),
+                                    &format!("{}, {}", right_temp, n),
+                                    &format!("Load {} into right register {}", n, right_temp),
                                 );
                             }
 
@@ -445,7 +637,11 @@ impl MipsGenerator {
                                     Some(reg) => {
                                         self.emit_instruction(
                                             "lw",
-                                            format!("{}, {}", right_temp, reg).as_str(),
+                                            &format!("{}, {}", right_temp, reg),
+                                            &format!(
+                                                "Load value from {} into right register {}",
+                                                reg, right_temp
+                                            ),
                                         );
                                     }
                                     None => {
@@ -477,6 +673,10 @@ impl MipsGenerator {
                                 self.emit_instruction(
                                     "add",
                                     &format!("{}, {}, {}", temp, left_temp, right_temp),
+                                    &format!(
+                                        "Add values from {} and {} and store in register {}",
+                                        left_temp, right_temp, temp
+                                    ),
                                 );
                             }
 
@@ -484,6 +684,10 @@ impl MipsGenerator {
                                 self.emit_instruction(
                                     "sub",
                                     &format!("{}, {}, {}", temp, left_temp, right_temp),
+                                    &format!(
+                                        "Sub values from {} and {} and store in register {}",
+                                        left_temp, right_temp, temp
+                                    ),
                                 );
                             }
 
@@ -496,6 +700,11 @@ impl MipsGenerator {
                                 "{}, {}($sp)\n",
                                 temp,
                                 self.get_offset_with_panic(allocator, identifier),
+                            ),
+                            &format!(
+                                "Store value from register {} to {}($sp)",
+                                temp,
+                                self.get_offset_with_panic(allocator, identifier)
                             ),
                         );
 
@@ -522,7 +731,11 @@ impl MipsGenerator {
                         }
                     };
 
-                    self.emit_instruction("la", &format!("{}, {}", reg, label));
+                    self.emit_instruction(
+                        "la",
+                        &format!("{}, {}", reg, label),
+                        &format!("Load string from address {} into register {}", label, reg),
+                    );
 
                     self.emit_instruction(
                         "sw",
@@ -530,6 +743,11 @@ impl MipsGenerator {
                             "{}, {}($sp)\n",
                             reg,
                             self.get_offset_with_panic(allocator, identifier),
+                        ),
+                        &format!(
+                            "Store string address from {} into {}($sp)",
+                            reg,
+                            self.get_offset_with_panic(allocator, identifier)
                         ),
                     );
 
@@ -551,7 +769,11 @@ impl MipsGenerator {
                         }
                     };
 
-                    self.emit_instruction("lw", &format!("{}, {}($sp)", reg, offset));
+                    self.emit_instruction(
+                        "lw",
+                        &format!("{}, {}($sp)", reg, offset),
+                        &format!("Load value from {}($sp) into register {}", offset, reg),
+                    );
 
                     self.emit_instruction(
                         "sw",
@@ -559,6 +781,11 @@ impl MipsGenerator {
                             "{}, {}($sp)\n",
                             reg,
                             self.get_offset_with_panic(allocator, identifier),
+                        ),
+                        &format!(
+                            "Store value from register {} into {}($sp)",
+                            reg,
+                            self.get_offset_with_panic(allocator, identifier)
                         ),
                     );
 
@@ -568,7 +795,7 @@ impl MipsGenerator {
                 _ => {
                     CompileError::TypeError {
                         message: "Unsupported expression in variable initialization".to_string(),
-                        line: 0,
+                        line: self.line,
                     };
                 }
             },
@@ -594,12 +821,21 @@ impl MipsGenerator {
 
         match operation {
             Expr::Integer(value) => {
-                self.emit_instruction("li", &format!("{}, {}", reg, value));
+                self.emit_instruction(
+                    "li",
+                    &format!("{}, {}", reg, value),
+                    &format!("Load {} into register {}", value, reg),
+                );
 
                 self.emit_instruction(
                     "sw",
                     &format!(
                         "{}, {}($sp)\n",
+                        reg,
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                    &format!(
+                        "Store value from register {} into {}($sp)",
                         reg,
                         self.get_offset_with_panic(allocator, identifier)
                     ),
@@ -616,7 +852,11 @@ impl MipsGenerator {
                     }
                 };
 
-                self.emit_instruction("lw", &format!("{}, {}($sp)", reg, offset));
+                self.emit_instruction(
+                    "lw",
+                    &format!("{}, {}($sp)", reg, offset),
+                    &format!("Load value at {}($sp) into register {}", offset, reg),
+                );
 
                 self.emit_instruction(
                     "sw",
@@ -625,8 +865,93 @@ impl MipsGenerator {
                         reg,
                         self.get_offset_with_panic(allocator, identifier)
                     ),
+                    &format!(
+                        "Store value from register {} into {}($sp)",
+                        reg,
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
                 );
 
+                allocator.free_temp(reg);
+            }
+
+            Expr::FunctionCall {
+                function_name,
+                arguments,
+                is_builtin_function,
+                builtin_function_type,
+            } => {
+                if arguments.len() > 4 {
+                    panic!("Maximum of 4 arguments allowed for {}", function_name);
+                }
+
+                let registers = ["$a0", "$a1", "$a2", "$a3"];
+
+                for i in 0..arguments.len() {
+                    match &arguments[i].expr {
+                        Expr::Integer(n) => {
+                            self.emit_instruction(
+                                "li",
+                                &format!("{}, {}", registers[i], n),
+                                &format!("Load {} into register {}", n, registers[i]),
+                            );
+                        }
+
+                        Expr::Identifier(name) => {
+                            let offset = self.get_offset_with_panic(allocator, &name);
+                            self.emit_instruction(
+                                "lw",
+                                &format!("{}, {}($sp)", registers[i], offset),
+                                &format!("Load value at {}($sp) into {}", offset, registers[i]),
+                            );
+                        }
+
+                        _ => {
+                            panic!(
+                                "Argument Expr {:?} not implemented in generate_variable_assignment",
+                                arguments[i].expr
+                            );
+                        }
+                    }
+                }
+
+                if *is_builtin_function {
+                    let syscall_number = match builtin_function_type {
+                        Some(BuiltinFunctionType::IntegerPrint) => 1,
+                        Some(BuiltinFunctionType::IntegerRead) => 5,
+                        Some(BuiltinFunctionType::StringRead) => 8,
+                        Some(BuiltinFunctionType::StringPrint) => 4,
+                        None => -1,
+                    };
+
+                    self.emit_instruction(
+                        "li",
+                        &format!("$v0, {}", syscall_number),
+                        "Load syscall number into $v0",
+                    );
+
+                    self.emit_instruction("syscall", "", "");
+                } else {
+                    self.emit_instruction(
+                        "jal",
+                        function_name,
+                        &format!("Call function {}", function_name),
+                    );
+                }
+
+                self.emit_instruction(
+                    "sw",
+                    &format!(
+                        "$v0, {}($sp)",
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                    &format!(
+                        "Store return value from $v0 into {}($sp)",
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                );
+
+                self.emit("");
                 allocator.free_temp(reg);
             }
 
@@ -639,10 +964,21 @@ impl MipsGenerator {
                 match &**left {
                     Expr::Identifier(name) => {
                         let offset = self.get_offset_with_panic(allocator, name);
-                        self.emit_instruction("lw", &format!("{}, {}($sp)", reg, offset));
+                        self.emit_instruction(
+                            "lw",
+                            &format!("{}, {}($sp)", reg, offset),
+                            &format!(
+                                "Load value from {}($sp) (variable {}) into left register {}",
+                                name, offset, reg
+                            ),
+                        );
                     }
                     Expr::Integer(value) => {
-                        self.emit_instruction("li", &format!("{}, {}", reg, value));
+                        self.emit_instruction(
+                            "li",
+                            &format!("{}, {}", reg, value),
+                            &format!("Load {} into register {}", value, reg),
+                        );
                     }
                     _ => panic!("Unsupported left operand in binary operation"),
                 }
@@ -654,22 +990,128 @@ impl MipsGenerator {
 
                 match &**right {
                     Expr::Identifier(name) => {
-                        let offset = self.get_offset_with_panic(allocator, name);
-                        self.emit_instruction("lw", &format!("{}, {}($sp)", reg2, offset));
+                        let right_r = match allocator.get_variable_register(name) {
+                            Some(r) => r,
+                            None => {
+                                panic!(
+                                    "Register or Offset not found for {} in generate_variable_assignment",
+                                    name
+                                );
+                            }
+                        };
+
+                        if right_r.contains("($sp)") {
+                            let offset = self.get_offset_with_panic(allocator, name);
+                            self.emit_instruction(
+                                "lw",
+                                &format!("{}, {}($sp)", reg2, offset),
+                                &format!(
+                                    "Load value from {}($sp) (variable {}) into right register {}",
+                                    name, offset, reg2
+                                ),
+                            );
+                        } else {
+                            self.emit_instruction(
+                                "move",
+                                &format!("{}, {}", reg2, right_r),
+                                &format!(
+                                    "Load value from {} (variable {}) into right register {}",
+                                    name, right_r, reg2
+                                ),
+                            );
+                        }
                     }
                     Expr::Integer(value) => {
-                        self.emit_instruction("li", &format!("{}, {}", reg2, value));
+                        self.emit_instruction(
+                            "li",
+                            &format!("{}, {}", reg2, value),
+                            &format!("Load {} into register {}", value, reg2),
+                        );
+                    }
+
+                    Expr::FunctionCall {
+                        function_name,
+                        arguments,
+                        is_builtin_function,
+                        builtin_function_type,
+                    } => {
+                        if arguments.len() > 4 {
+                            panic!("Maximum of 4 arguments allowed for {}", function_name);
+                        }
+
+                        let registers = ["$a0", "$a1", "$a2", "$a3"];
+
+                        for i in 0..arguments.len() {
+                            match &arguments[i].expr {
+                                Expr::Integer(n) => {
+                                    self.emit_instruction(
+                                        "li",
+                                        &format!("{}, {}", registers[i], n),
+                                        &format!("Load {} into register {}", n, registers[i]),
+                                    );
+                                }
+
+                                Expr::Identifier(name) => {
+                                    let offset = self.get_offset_with_panic(allocator, &name);
+                                    self.emit_instruction(
+                                        "lw",
+                                        &format!("{}, {}($sp)", registers[i], offset),
+                                        &format!(
+                                            "Load value at {}($sp) into {}",
+                                            offset, registers[i]
+                                        ),
+                                    );
+                                }
+
+                                _ => {
+                                    panic!(
+                                        "Argument Expr {:?} not implemented in generate_variable_assignment",
+                                        arguments[i].expr
+                                    );
+                                }
+                            }
+                        }
+
+                        if *is_builtin_function {
+                            let syscall_number = match builtin_function_type {
+                                Some(BuiltinFunctionType::IntegerPrint) => 1,
+                                Some(BuiltinFunctionType::IntegerRead) => 5,
+                                Some(BuiltinFunctionType::StringRead) => 8,
+                                Some(BuiltinFunctionType::StringPrint) => 4,
+                                None => -1,
+                            };
+
+                            self.emit_instruction(
+                                "li",
+                                &format!("$v0, {}", syscall_number),
+                                "Load syscall number into $v0",
+                            );
+
+                            self.emit_instruction("syscall", "", "");
+                        } else {
+                            self.emit_instruction(
+                                "jal",
+                                function_name,
+                                &format!("Call function {}", function_name),
+                            );
+                        }
+
+                        self.emit_instruction(
+                            "move",
+                            &format!("{}, $v0", reg2),
+                            &format!("Move return value from $v0 to {}", reg2),
+                        );
                     }
                     _ => panic!("Unsupported right operand in binary operation"),
                 }
 
                 match operator {
                     BinaryOperator::Add => {
-                        self.emit_instruction("add", &format!("{}, {}, {}", reg, reg, reg2));
+                        self.emit_instruction("add", &format!("{}, {}, {}", reg, reg, reg2), &format!("Add values from register {} and {} and store it back into register {}", reg, reg2, reg));
                     }
 
                     BinaryOperator::Subtract => {
-                        self.emit_instruction("sub", &format!("{}, {}, {}", reg, reg, reg2));
+                        self.emit_instruction("sub", &format!("{}, {}, {}", reg, reg, reg2), &format!("Sub values from register {} and {} and store it back into register {}", reg, reg2, reg));
                     }
 
                     _ => panic!("Unsupported binary operator: {:?}", operator),
@@ -679,6 +1121,11 @@ impl MipsGenerator {
                     "sw",
                     &format!(
                         "{}, {}($sp)",
+                        reg,
+                        self.get_offset_with_panic(allocator, identifier)
+                    ),
+                    &format!(
+                        "Store value from register {} into {}($sp)",
                         reg,
                         self.get_offset_with_panic(allocator, identifier)
                     ),
@@ -693,7 +1140,7 @@ impl MipsGenerator {
             _ => {
                 CompileError::TypeError {
                     message: "Unsupported expression in variable assignment".to_string(),
-                    line: 0,
+                    line: self.line,
                 };
             }
         }
@@ -757,7 +1204,11 @@ impl MipsGenerator {
 
                         self.emit_instruction(
                             "lw",
-                            format!("{}, {}($sp)", left_reg, offset).as_str(),
+                            &format!("{}, {}($sp)", left_reg, offset),
+                            &format!(
+                                "Load value from {}($sp) into left register {}",
+                                offset, left_reg
+                            ),
                         );
                     } else {
                         let reg = match allocator.get_argument_register(name) {
@@ -767,12 +1218,23 @@ impl MipsGenerator {
                             }
                         };
 
-                        self.emit_instruction("move", format!("{}, {}", left_reg, reg).as_str());
+                        self.emit_instruction(
+                            "move",
+                            &format!("{}, {}", left_reg, reg),
+                            &format!(
+                                "Move value from register {} into left register {}",
+                                reg, left_reg
+                            ),
+                        );
                     }
                 }
 
                 Expr::Integer(n) => {
-                    self.emit_instruction("li", format!("{}, {}", left_reg, *n).as_str());
+                    self.emit_instruction(
+                        "li",
+                        &format!("{}, {}", left_reg, n),
+                        &format!("Store {} in left register {}", n, left_reg),
+                    );
                 }
 
                 _ => {}
@@ -791,7 +1253,11 @@ impl MipsGenerator {
 
                         self.emit_instruction(
                             "lw",
-                            format!("{}, {}($sp)", right_reg, offset).as_str(),
+                            &format!("{}, {}($sp)", right_reg, offset),
+                            &format!(
+                                "Load value from {}($sp) into right register {}",
+                                offset, right_reg
+                            ),
                         );
                     } else {
                         let reg = match allocator.get_argument_register(name) {
@@ -801,12 +1267,23 @@ impl MipsGenerator {
                             }
                         };
 
-                        self.emit_instruction("move", format!("{}, {}", right_reg, reg).as_str());
+                        self.emit_instruction(
+                            "move",
+                            &format!("{}, {}", right_reg, reg),
+                            &format!(
+                                "Move value from register {} into right register {}",
+                                reg, right_reg
+                            ),
+                        );
                     }
                 }
 
                 Expr::Integer(n) => {
-                    self.emit_instruction("li", format!("{}, {}", right_reg, *n).as_str());
+                    self.emit_instruction(
+                        "li",
+                        &format!("{}, {}", right_reg, n),
+                        &format!("Load {} into right register {}", n, right_reg),
+                    );
                 }
 
                 _ => {}
@@ -814,7 +1291,8 @@ impl MipsGenerator {
 
             self.emit_instruction(
                 branch_type,
-                format!("{}, {}, {}", left_reg, right_reg, branch_label).as_str(),
+                &format!("{}, {}, {}", left_reg, right_reg, branch_label),
+                &format!("Compare values at left register {} and right register {} and branch to {} if needed", left_reg, right_reg, branch_label)
             );
 
             self.emit("");
@@ -831,7 +1309,11 @@ impl MipsGenerator {
         body: &Vec<Statement>,
         allocator: &mut Allocator,
     ) {
-        self.emit_instruction("j", end_label);
+        self.emit_instruction(
+            "j",
+            end_label,
+            &format!("Jump to while loop end at label {}", end_label),
+        );
         self.emit_label(body_label);
 
         for stmt in body {
@@ -862,7 +1344,13 @@ impl MipsGenerator {
             self.generate_variable_declaration(var_type, identifier, operation, allocator);
         }
 
-        self.emit_instruction("j", end_label);
+        self.emit_instruction(
+            "j",
+            end_label,
+            &format!("Jump to for loop end at label {}", end_label),
+        );
+
+        self.emit("");
         self.emit_label(body_label);
 
         for stmt in body {
@@ -898,61 +1386,71 @@ impl MipsGenerator {
         self.emit_label(label);
     }
 
-    fn generate_builtin_function(
-        &mut self,
-        function_type: &BuiltinFunctionType,
-        arguments: &Vec<Argument>,
-        allocator: &mut Allocator,
-    ) {
-        let syscall_number: usize;
+    // fn generate_builtin_function(
+    //     &mut self,
+    //     function_type: &BuiltinFunctionType,
+    //     arguments: &Vec<Argument>,
+    //     allocator: &mut Allocator,
+    // ) {
+    //     let syscall_number = match function_type {
+    //         BuiltinFunctionType::IntegerPrint => 1,
+    //         BuiltinFunctionType::StringPrint => 4,
+    //         BuiltinFunctionType::IntegerRead => 5,
+    //         BuiltinFunctionType::StringRead => 8,
+    //     };
 
-        match function_type {
-            BuiltinFunctionType::IntegerPrint => {
-                syscall_number = 1;
-            }
+    //     // Looping through the arguments here is kinda useless because
+    //     // We're only using a0 I think it's fine for now
+    //     for arg in arguments {
+    //         match &arg.expr {
+    //             Expr::Identifier(name) => {
+    //                 let offset = self.get_offset_with_panic(allocator, &name);
+    //                 self.emit_instruction(
+    //                     "lw",
+    //                     &format!("$a0, {}($sp)", offset),
+    //                     &format!("Load argument {} into $a0 from {}($sp)", name, offset),
+    //                 );
+    //             }
 
-            BuiltinFunctionType::StringPrint => {
-                syscall_number = 4;
-            }
-        }
+    //             Expr::Integer(n) => {
+    //                 self.emit_instruction(
+    //                     "li",
+    //                     &format!("$a0, {}", n),
+    //                     &format!("Load {} into argument register $a0", n),
+    //                 );
+    //             }
 
-        // Looping through the arguments here is kinda useless because
-        // We're only using a0 I think it's fine for now
-        for arg in arguments {
-            match &arg.expr {
-                Expr::Identifier(name) => {
-                    let offset = self.get_offset_with_panic(allocator, &name);
-                    self.emit_instruction("lw", format!("$a0, {}($sp)", offset).as_str());
-                }
+    //             Expr::StringLiteral(s) => {
+    //                 let label = match self.get_data_label_for_string(s) {
+    //                     Some(l) => l,
+    //                     None => {
+    //                         panic!("Label not found for {}", s);
+    //                     }
+    //                 };
 
-                Expr::Integer(n) => {
-                    self.emit_instruction("li", format!("$a0, {}", n).as_str());
-                }
+    //                 self.emit_instruction("la", &format!("$a0, {}", label), &format!("Load the address of the string stored at {} into argument register $a0", label));
+    //             }
 
-                Expr::StringLiteral(s) => {
-                    let label = match self.get_data_label_for_string(s) {
-                        Some(l) => l,
-                        None => {
-                            panic!("Label not found for {}", s);
-                        }
-                    };
+    //             _ => {
+    //                 panic!(
+    //                     "expr {:?} not implemented in generate_builtin_function",
+    //                     arg.expr
+    //                 );
+    //             }
+    //         }
+    //     }
 
-                    self.emit_instruction("la", format!("$a0, {}", label).as_str());
-                }
-
-                _ => {
-                    panic!(
-                        "expr {:?} not implemented in generate_builtin_function",
-                        arg.expr
-                    );
-                }
-            }
-        }
-
-        self.emit_instruction("li", format!("$v0, {}", syscall_number).as_str());
-        self.emit_instruction("syscall", "");
-        self.emit("");
-    }
+    //     self.emit_instruction(
+    //         "li",
+    //         &format!("$v0, {}", syscall_number),
+    //         &format!(
+    //             "Load the appropriate syscall number {} into $v0",
+    //             syscall_number
+    //         ),
+    //     );
+    //     self.emit_instruction("syscall", "", "");
+    //     self.emit("");
+    // }
 
     fn generate_data_label(&mut self, statement: &Statement) {
         if let Statement::DataDeclaration {
