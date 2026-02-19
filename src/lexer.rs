@@ -254,20 +254,19 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self, tokens: &mut Vec<Token>) {
-        while !self.is_at_end() {
-            match self.peek() {
-                ' ' | '\t' => {
-                    self.advance();
-                }
-                '\n' => {
-                    self.line += 1;
-                    //tokens.push(Token::NewLine);
-                    self.advance();
-                }
-                _ => break,
-            }
-        }
-    }
+		while !self.is_at_end() {
+			match self.peek() {
+				' ' | '\t' | '\r' => {
+					self.advance();
+				}
+				'\n' => {
+					self.line += 1;
+					self.advance();
+				}
+				_ => break,
+			}
+		}
+	}
 
     // Not proud of this implementation
     fn skip_comments(&mut self, tokens: &mut Vec<Token>) {
