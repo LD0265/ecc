@@ -18,6 +18,7 @@ pub enum BuiltinFunctionType {
     StringPrint,
     IntegerRead,
     StringRead,
+    IntegerRandomRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +31,7 @@ pub enum BinaryOperator {
     NotEqual,
     Add,
     Subtract,
+    Multiply,
     Empty,
 }
 

@@ -76,6 +76,11 @@ impl Lexer {
             '+' => self.scan_plus(),
             '-' => self.scan_minus(),
 
+            '*' => {
+                self.advance();
+                Ok(Token::Star)
+            }
+
             '=' => self.scan_equal(),
             '!' => self.scan_not(),
 

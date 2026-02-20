@@ -45,7 +45,7 @@ impl Parser {
                         operands: vec!["$v0, 10".to_string()],
                     },
                     Statement::Instruction {
-                        opcode: "syscall".to_string(),
+                        opcode: "syscall\n".to_string(),
                         operands: vec![],
                     },
                 ]
@@ -230,6 +230,7 @@ impl Parser {
             let operator = match self.peek() {
                 Token::Plus => BinaryOperator::Add,
                 Token::Minus => BinaryOperator::Subtract,
+                Token::Star => BinaryOperator::Multiply,
                 _ => BinaryOperator::Empty,
             };
 
@@ -286,13 +287,14 @@ impl Parser {
                     self.advance();
 
                     let is_builtin_function =
-                        matches!(n.as_str(), "iprint" | "sprint" | "iread" | "sread");
+                        matches!(n.as_str(), "iprint" | "sprint" | "iread" | "sread" | "irandrange");
 
                     let builtin_function_type = match n.as_str() {
                         "iprint" => Some(BuiltinFunctionType::IntegerPrint),
                         "sprint" => Some(BuiltinFunctionType::StringPrint),
                         "iread" => Some(BuiltinFunctionType::IntegerRead),
                         "sread" => Some(BuiltinFunctionType::StringRead),
+                        "irandrange" => Some(BuiltinFunctionType::IntegerRandomRange),
                         _ => None,
                     };
 
@@ -378,6 +380,11 @@ impl Parser {
 
         self.advance();
 
+        // This will bite me later
+        if self.peek_ahead(1) != Some(&Token::RightParen) {
+            self.expect(Token::Semicolon, "parse_unary")?;
+        }
+
         Ok(Statement::VariableAssignment {
             identifier: name,
             operation,
@@ -396,10 +403,11 @@ impl Parser {
         let left = self.parse_expression()?;
 
         let value = match self.peek() {
-            Token::Plus | Token::Minus => {
+            Token::Plus | Token::Minus | Token::Star => {
                 let operator = match self.peek() {
                     Token::Plus => BinaryOperator::Add,
                     Token::Minus => BinaryOperator::Subtract,
+                    Token::Star => BinaryOperator::Multiply,
                     _ => unreachable!(),
                 };
                 self.advance();
@@ -660,6 +668,7 @@ impl Parser {
             "sprint" => true,
             "iread" => true,
             "sread" => true,
+            "irandrange" => true,
             _ => false,
         };
 
@@ -668,6 +677,7 @@ impl Parser {
             "sprint" => Some(BuiltinFunctionType::StringPrint),
             "iread" => Some(BuiltinFunctionType::IntegerRead),
             "sread" => Some(BuiltinFunctionType::StringRead),
+            "irandrange" => Some(BuiltinFunctionType::IntegerRandomRange),
             _ => None,
         };
 

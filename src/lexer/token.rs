@@ -30,6 +30,7 @@ pub enum Token {
     GreaterThanEqual,
     Plus,
     Minus,
+    Star,
 
     // Almost operators but not really
     PlusPlus,

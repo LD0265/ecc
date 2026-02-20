@@ -39,7 +39,7 @@ pub enum Register {
     RA,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum VariableLocation {
     Stack,
     ArgumentRegister,
