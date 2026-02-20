@@ -351,7 +351,7 @@ impl MipsGenerator {
 
                 self.emit_instruction(
                     "li",
-                    &format!("{}, {}", temp, n),
+                    &format!("{}, {}", temp, int_value),
                     &format!("Load {} into temp register {}", temp, int_value),
                 );
 
