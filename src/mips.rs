@@ -339,6 +339,25 @@ impl MipsGenerator {
                 reg = temp.to_string();
             }
 
+            Expr::BoolLiteral(value) => {
+                let int_value = if *value { 1 } else { 0 };
+
+                let temp = match allocator.allocate_temp() {
+                    Some(reg) => reg,
+                    None => {
+                        panic!("Out of temp registers in generate_return")
+                    }
+                };
+
+                self.emit_instruction(
+                    "li",
+                    &format!("{}, {}", temp, n),
+                    &format!("Load {} into temp register {}", temp, int_value),
+                );
+
+                reg = temp.to_string();
+            }
+
             Expr::Empty => {
                 include_return_register = false;
             }
