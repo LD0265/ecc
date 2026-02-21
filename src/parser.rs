@@ -771,11 +771,11 @@ impl Parser {
         }
     }
 
-    fn skip(&mut self, n: usize) {
-        if self.current < self.tokens.len() - 1 {
-            self.current += n;
-        }
-    }
+    // fn skip(&mut self, n: usize) {
+    //     if self.current < self.tokens.len() - 1 {
+    //         self.current += n;
+    //     }
+    // }
 
     fn backtrack(&mut self) {
         if self.current > 0 {

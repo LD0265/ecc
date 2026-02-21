@@ -22,8 +22,8 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while !self.is_at_end() {
-            self.skip_whitespace(&mut tokens);
-            self.skip_comments(&mut tokens);
+            self.skip_whitespace();
+            self.skip_comments();
 
             if self.is_at_end() {
                 break;
@@ -258,7 +258,7 @@ impl Lexer {
         }
     }
 
-    fn skip_whitespace(&mut self, tokens: &mut Vec<Token>) {
+    fn skip_whitespace(&mut self) {
 		while !self.is_at_end() {
 			match self.peek() {
 				' ' | '\t' | '\r' => {
@@ -274,7 +274,7 @@ impl Lexer {
 	}
 
     // Not proud of this implementation
-    fn skip_comments(&mut self, tokens: &mut Vec<Token>) {
+    fn skip_comments(&mut self) {
         while !self.is_at_end() {
             if self.peek() == '/' && self.peek_ahead(1) == '/' {
                 self.advance();
@@ -283,8 +283,6 @@ impl Lexer {
                 while self.peek() != '\n' {
                     self.advance();
                 }
-
-                self.skip_whitespace(tokens);
             } else {
                 break;
             }

@@ -147,7 +147,7 @@ pub enum Statement {
 
     ExprStatement(Expr),
 
-    NewLine,
+    // NewLine,
 }
 
 #[derive(Debug, Clone)]

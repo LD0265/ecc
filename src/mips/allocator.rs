@@ -5,14 +5,14 @@ use crate::parser::ast::Statement;
 
 #[derive(PartialEq, Clone, Debug, Copy)]
 pub enum Register {
-    Zero,
-    AT,
-    V0,
-    V1,
-    A0,
-    A1,
-    A2,
-    A3,
+    // Zero,
+    // AT,
+    // V0,
+    // V1,
+    // A0,
+    // A1,
+    // A2,
+    // A3,
     T0,
     T1,
     T2,
@@ -21,22 +21,22 @@ pub enum Register {
     T5,
     T6,
     T7,
-    S0,
-    S1,
-    S2,
-    S3,
-    S4,
-    S5,
-    S6,
-    S7,
-    T8,
-    T9,
-    K0,
-    K1,
-    GP,
-    SP,
-    FP,
-    RA,
+    // S0,
+    // S1,
+    // S2,
+    // S3,
+    // S4,
+    // S5,
+    // S6,
+    // S7,
+    // T8,
+    // T9,
+    // K0,
+    // K1,
+    // GP,
+    // SP,
+    // FP,
+    // RA,
 }
 
 #[derive(PartialEq, Debug)]
@@ -48,14 +48,14 @@ pub enum VariableLocation {
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            Register::Zero => "$zero",
-            Register::AT => "$at",
-            Register::V0 => "$v0",
-            Register::V1 => "$v1",
-            Register::A0 => "$a0",
-            Register::A1 => "$a1",
-            Register::A2 => "$a2",
-            Register::A3 => "$a3",
+            // Register::Zero => "$zero",
+            // Register::AT => "$at",
+            // Register::V0 => "$v0",
+            // Register::V1 => "$v1",
+            // Register::A0 => "$a0",
+            // Register::A1 => "$a1",
+            // Register::A2 => "$a2",
+            // Register::A3 => "$a3",
             Register::T0 => "$t0",
             Register::T1 => "$t1",
             Register::T2 => "$t2",
@@ -64,22 +64,22 @@ impl fmt::Display for Register {
             Register::T5 => "$t5",
             Register::T6 => "$t6",
             Register::T7 => "$t7",
-            Register::S0 => "$s0",
-            Register::S1 => "$s1",
-            Register::S2 => "$s2",
-            Register::S3 => "$s3",
-            Register::S4 => "$s4",
-            Register::S5 => "$s5",
-            Register::S6 => "$s6",
-            Register::S7 => "$s7",
-            Register::T8 => "$t8",
-            Register::T9 => "$t9",
-            Register::K0 => "$k0",
-            Register::K1 => "$k1",
-            Register::GP => "$gp",
-            Register::SP => "$sp",
-            Register::FP => "$fp",
-            Register::RA => "$ra",
+            // Register::S0 => "$s0",
+            // Register::S1 => "$s1",
+            // Register::S2 => "$s2",
+            // Register::S3 => "$s3",
+            // Register::S4 => "$s4",
+            // Register::S5 => "$s5",
+            // Register::S6 => "$s6",
+            // Register::S7 => "$s7",
+            // Register::T8 => "$t8",
+            // Register::T9 => "$t9",
+            // Register::K0 => "$k0",
+            // Register::K1 => "$k1",
+            // Register::GP => "$gp",
+            // Register::SP => "$sp",
+            // Register::FP => "$fp",
+            // Register::RA => "$ra",
         };
         write!(f, "{}", s)
     }
@@ -164,25 +164,25 @@ impl Allocator {
         }
     }
 
-    pub fn add_argument(&mut self, name: &str) {
-        let arg_registers = vec![Register::A0, Register::A1, Register::A2, Register::A3];
+    // pub fn add_argument(&mut self, name: &str) {
+    //     let arg_registers = vec![Register::A0, Register::A1, Register::A2, Register::A3];
 
-        let mut reg_to_use = Register::Zero;
+    //     let mut reg_to_use = Register::Zero;
 
-        for arg_reg in arg_registers {
-            if !self.used_registers.contains(&arg_reg) {
-                reg_to_use = arg_reg;
-                self.used_registers.push(arg_reg.clone());
-                break;
-            }
-        }
+    //     for arg_reg in arg_registers {
+    //         if !self.used_registers.contains(&arg_reg) {
+    //             reg_to_use = arg_reg;
+    //             self.used_registers.push(arg_reg.clone());
+    //             break;
+    //         }
+    //     }
 
-        if reg_to_use == Register::Zero {
-            panic!("Out of Argument registers");
-        }
+    //     if reg_to_use == Register::Zero {
+    //         panic!("Out of Argument registers");
+    //     }
 
-        self.argument_registers.insert(name.to_string(), reg_to_use);
-    }
+    //     self.argument_registers.insert(name.to_string(), reg_to_use);
+    // }
 
     pub fn get_argument_register(&self, name: &str) -> Option<String> {
         let reg = match self.argument_registers.get(name) {
@@ -216,13 +216,13 @@ impl Allocator {
         }
     }
 
-    pub fn get_stack_variables(&self) -> &HashMap<String, usize> {
-        &self.stack_variables
-    }
+    // pub fn get_stack_variables(&self) -> &HashMap<String, usize> {
+    //     &self.stack_variables
+    // }
 
-    pub fn get_argument_variables(&self) -> &HashMap<String, Register> {
-        &self.argument_registers
-    }
+    // pub fn get_argument_variables(&self) -> &HashMap<String, Register> {
+    //     &self.argument_registers
+    // }
 
     // I should refactor mips.rs to use this more
     pub fn get_variable_register(&self, name: &str) -> Option<String> {

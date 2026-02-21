@@ -153,6 +153,8 @@ impl MipsGenerator {
                     );
                 }
 
+                self.emit("");
+
                 for stmt in body {
                     self.generate_statement(&stmt, allocator);
                 }
@@ -472,9 +474,9 @@ impl MipsGenerator {
                 );
             }
 
-            Statement::NewLine => {
-                self.line += 1;
-            }
+            // Statement::NewLine => {
+            //     self.line += 1;
+            // }
 
             _ => {}
         }
