@@ -22,8 +22,8 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while !self.is_at_end() {
-            self.skip_whitespace();
             self.skip_comments();
+            self.skip_whitespace();
 
             if self.is_at_end() {
                 break;
@@ -60,6 +60,16 @@ impl Lexer {
                 Ok(Token::RightBrace)
             }
 
+            '[' => {
+                self.advance();
+                Ok(Token::LeftBracket)
+            }
+
+            ']' => {
+                self.advance();
+                Ok(Token::RightBracket)
+            }
+
             ';' => {
                 self.advance();
                 Ok(Token::Semicolon)
@@ -84,7 +94,12 @@ impl Lexer {
             '=' => self.scan_equal(),
             '!' => self.scan_not(),
 
-            '0'..='9' => self.scan_number(),
+            '&' => {
+                self.advance();
+                Ok(Token::Ampersand)
+            }
+
+            '0'..='9' => self.scan_number(false),
             'a'..='z' | 'A'..='Z' | '_' => self.scan_identifier(),
             '"' => self.scan_string_literal(),
 
@@ -129,20 +144,42 @@ impl Lexer {
         Ok(token)
     }
 
-    fn scan_number(&mut self) -> Result<Token> {
+    fn scan_number(&mut self, is_negative: bool) -> Result<Token> {
         let start = self.current;
 
         while !self.is_at_end() && self.peek().is_ascii_digit() {
             self.advance();
         }
 
+        let is_hex = self.source[start..self.current].iter().collect::<String>() == "0"
+            && !self.is_at_end()
+            && (self.peek() == 'x' || self.peek() == 'X');
+
+        if is_hex {
+            self.advance();
+
+            while !self.is_at_end() && self.peek().is_ascii_hexdigit() {
+                self.advance();
+            }
+        }
+
         let text: String = self.source[start..self.current].iter().collect();
 
-        // parse::<i32>() should only be temporary
-        let value = text.parse::<i32>().map_err(|_| CompileError::LexError {
-            message: format!("Invalid number: {}", text),
-            line: self.line,
-        })?;
+        let mut value: i32 = if is_hex {
+            i32::from_str_radix(&text[2..], 16).map_err(|_| CompileError::LexError {
+                message: format!("Invalid hex number: {}", text),
+                line: self.line,
+            })?
+        } else {
+            text.parse::<i32>().map_err(|_| CompileError::LexError {
+                message: format!("Invalid number: {}", text),
+                line: self.line,
+            })?
+        };
+
+        if is_negative {
+            value *= -1;
+        }
 
         Ok(Token::Integer(value))
     }
@@ -224,6 +261,8 @@ impl Lexer {
                 Ok(Token::MinusMinus)
             }
 
+            '0'..='9' => self.scan_number(true),
+
             _ => Ok(Token::Minus),
         }
     }
@@ -237,6 +276,11 @@ impl Lexer {
             '=' => {
                 self.advance();
                 Ok(Token::LessThanEqual)
+            }
+
+            '<' => {
+                self.advance();
+                Ok(Token::LeftShift)
             }
 
             _ => Ok(Token::LessThan),
@@ -254,39 +298,47 @@ impl Lexer {
                 Ok(Token::GreaterThanEqual)
             }
 
+            '>' => {
+                self.advance();
+                Ok(Token::RightShift)
+            }
+
             _ => Ok(Token::GreaterThan),
         }
     }
 
     fn skip_whitespace(&mut self) {
-		while !self.is_at_end() {
-			match self.peek() {
-				' ' | '\t' | '\r' => {
-					self.advance();
-				}
-				'\n' => {
-					self.line += 1;
-					self.advance();
-				}
-				_ => break,
-			}
-		}
-	}
+        while !self.is_at_end() {
+            match self.peek() {
+                ' ' | '\t' | '\r' => {
+                    self.advance();
+                }
+                '\n' => {
+                    self.line += 1;
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+    }
 
     // Not proud of this implementation
     fn skip_comments(&mut self) {
-        while !self.is_at_end() {
-            if self.peek() == '/' && self.peek_ahead(1) == '/' {
-                self.advance();
-                self.advance();
-
-                while self.peek() != '\n' {
-                    self.advance();
+        let mut new_source: Vec<char> = Vec::with_capacity(self.source.len());
+        let mut i = 0;
+        while i < self.source.len() {
+            if i + 1 < self.source.len() && self.source[i] == '/' && self.source[i + 1] == '/' {
+                let mut j = i + 2;
+                while j < self.source.len() && self.source[j] != '\n' {
+                    j += 1;
                 }
+                i = j;
             } else {
-                break;
+                new_source.push(self.source[i]);
+                i += 1;
             }
         }
+        self.source = new_source;
     }
 
     fn peek(&self) -> char {
@@ -294,14 +346,6 @@ impl Lexer {
             '\0'
         } else {
             self.source[self.current]
-        }
-    }
-
-    fn peek_ahead(&self, n: usize) -> char {
-        if self.is_at_end() {
-            '\0'
-        } else {
-            self.source[self.current + n]
         }
     }
 

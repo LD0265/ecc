@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{self};
 
-use crate::parser::ast::Statement;
+use crate::parser::ast::{Expr, Statement};
 
 #[derive(PartialEq, Clone, Debug, Copy)]
 pub enum Register {
@@ -21,16 +21,16 @@ pub enum Register {
     T5,
     T6,
     T7,
-    // S0,
-    // S1,
-    // S2,
-    // S3,
-    // S4,
-    // S5,
-    // S6,
-    // S7,
-    // T8,
-    // T9,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    T8,
+    T9,
     // K0,
     // K1,
     // GP,
@@ -64,16 +64,16 @@ impl fmt::Display for Register {
             Register::T5 => "$t5",
             Register::T6 => "$t6",
             Register::T7 => "$t7",
-            // Register::S0 => "$s0",
-            // Register::S1 => "$s1",
-            // Register::S2 => "$s2",
-            // Register::S3 => "$s3",
-            // Register::S4 => "$s4",
-            // Register::S5 => "$s5",
-            // Register::S6 => "$s6",
-            // Register::S7 => "$s7",
-            // Register::T8 => "$t8",
-            // Register::T9 => "$t9",
+            Register::S0 => "$s0",
+            Register::S1 => "$s1",
+            Register::S2 => "$s2",
+            Register::S3 => "$s3",
+            Register::S4 => "$s4",
+            Register::S5 => "$s5",
+            Register::S6 => "$s6",
+            Register::S7 => "$s7",
+            Register::T8 => "$t8",
+            Register::T9 => "$t9",
             // Register::K0 => "$k0",
             // Register::K1 => "$k1",
             // Register::GP => "$gp",
@@ -90,6 +90,7 @@ pub struct Allocator {
     argument_registers: HashMap<String, Register>,
     stack_variables: HashMap<String, usize>,
     stack_size: usize,
+    next_offset: usize,
 }
 
 impl Allocator {
@@ -99,6 +100,7 @@ impl Allocator {
             argument_registers: HashMap::new(),
             stack_variables: HashMap::new(),
             stack_size: 0,
+            next_offset: 0,
         }
     }
 
@@ -112,6 +114,16 @@ impl Allocator {
             Register::T5,
             Register::T6,
             Register::T7,
+            Register::T8,
+            Register::T9,
+            Register::S0,
+            Register::S1,
+            Register::S2,
+            Register::S3,
+            Register::S4,
+            Register::S5,
+            Register::S6,
+            Register::S7,
         ];
 
         for reg in temp_registers {
@@ -145,7 +157,20 @@ impl Allocator {
     fn calculate_needed_stack_space_helper(&mut self, statements: &[Statement]) {
         for stmt in statements {
             match stmt {
-                Statement::VariableDeclaration { .. } => {
+                Statement::VariableDeclaration { operation, .. } => {
+                    match operation {
+                        Expr::BinaryOp { left, .. } => {
+                            match &**left {
+                                Expr::ArrayInitializer { size, .. } => {
+                                    // size * 4 for elements, the variable's own slot
+                                    // is added by the += 4 below, giving (size + 1) * 4 total
+                                    self.stack_size += size * 4;
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
                     self.stack_size += 4;
                 }
 
@@ -154,7 +179,6 @@ impl Allocator {
                 }
 
                 Statement::For { body, .. } => {
-                    // Add 4 because of init var decleration in parens
                     self.stack_size += 4;
                     self.calculate_needed_stack_space_helper(body);
                 }
@@ -196,8 +220,13 @@ impl Allocator {
     }
 
     pub fn add_stack_variable(&mut self, name: &str) {
-        let offset = self.stack_size - (4 * (self.stack_variables.len() + 1));
+        let offset = self.next_offset; // use running byte position
+        self.next_offset += 4;
         self.stack_variables.insert(name.to_string(), offset);
+    }
+
+    pub fn reserve_array_elements(&mut self, num_elements: usize) {
+        self.next_offset += num_elements * 4;
     }
 
     pub fn get_stack_size(&self) -> &usize {

@@ -2,6 +2,7 @@
 pub enum Type {
     Void,
     Int32,
+    Int32Pointer,
     Bool,
     String,
 }
@@ -22,6 +23,12 @@ pub enum BuiltinFunctionType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum BitwiseShiftType {
+    LeftShift,
+    RightShift,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperator {
     LessThan,
     GreaterThan,
@@ -39,6 +46,8 @@ pub enum BinaryOperator {
 pub enum Expr {
     Integer(i32),
     Identifier(String),
+    IdentifierReference(String),
+    IdentifierDereference(String),
     StringLiteral(String),
     BoolLiteral(bool),
     Empty,
@@ -48,6 +57,21 @@ pub enum Expr {
         operator: BinaryOperator,
         right: Box<Expr>,
         is_not: bool
+    },
+
+    ArrayInitializer {
+        body: Vec<Box<Expr>>,
+        size: usize,
+    },
+
+    ArrayIndex {
+        array_name: String,
+        indexer: Box<Expr>,
+    },
+
+    BitwiseShift {
+        identifier: Box<Expr>,
+        shift_type: BitwiseShiftType,
     },
 
     FunctionCall {
@@ -78,6 +102,7 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Argument {
     pub expr: Expr,
+    pub typ: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +127,11 @@ pub enum Statement {
     VariableAssignment {
         identifier: String,
         operation: Expr,
+        
+        // This doesn't feel right but it's easy
+        is_dereference: bool,
+        is_array_index: bool,
+        indexer: Expr, 
     },
 
     Function {

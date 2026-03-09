@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Keywords
     Void,
@@ -31,16 +31,21 @@ pub enum Token {
     Plus,
     Minus,
     Star,
+    Ampersand,
 
     // Almost operators but not really
     PlusPlus,
     MinusMinus,
+    RightShift,
+    LeftShift,
     
     // Delimiters
     LeftParen,
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Comma,
     Semicolon,
     

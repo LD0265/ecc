@@ -1,5 +1,7 @@
 pub(crate) mod ast;
 
+use std::collections::HashMap;
+
 use crate::error::{CompileError, Result};
 use crate::lexer::Token;
 use crate::parser::ast::*;
@@ -12,10 +14,20 @@ pub struct Parser {
     num_while: usize,
     num_for: usize,
     num_if: usize,
+
+    function_param_types: HashMap<String, Vec<Type>>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
+        let mut function_param_types: HashMap<String, Vec<Type>> = HashMap::new();
+
+        function_param_types.insert("iprint".to_string(), vec![Type::Int32]);
+        function_param_types.insert("sprint".to_string(), vec![Type::String]);
+        function_param_types.insert("iread".to_string(), vec![]);
+        function_param_types.insert("sread".to_string(), vec![]);
+        function_param_types.insert("irandrange".to_string(), vec![Type::Int32, Type::Int32]);
+
         Parser {
             tokens,
             current: 0,
@@ -23,6 +35,7 @@ impl Parser {
             num_while: 0,
             num_for: 0,
             num_if: 0,
+            function_param_types,
         }
     }
 
@@ -74,6 +87,16 @@ impl Parser {
 
         self.expect(Token::LeftParen, "parse_function")?;
         let params = self.parse_parameters()?;
+
+        let mut param_types: Vec<Type> = Vec::new();
+
+        for param in &params {
+            let p = param.clone();
+            param_types.push(p.param_type);
+        }
+
+        self.function_param_types.insert(name.clone(), param_types);
+
         self.expect(Token::RightParen, "parse_function")?;
 
         self.expect(Token::LeftBrace, "parse_function")?;
@@ -97,7 +120,14 @@ impl Parser {
     fn parse_type(&mut self) -> Result<Type> {
         let typ = match self.peek() {
             Token::Void => Type::Void,
-            Token::Int32 => Type::Int32,
+            Token::Int32 => {
+                if self.peek_ahead(1) == Some(&Token::Ampersand) {
+                    self.advance();
+                    Type::Int32Pointer
+                } else {
+                    Type::Int32
+                }
+            }
             Token::Bool => Type::Bool,
             Token::String => Type::String,
 
@@ -176,9 +206,9 @@ impl Parser {
             Token::For => self.parse_for(),
 
             Token::Int32 | Token::String | Token::Bool | Token::Void => {
-                let is_function = match self.peek_ahead(2) {
-                    Some(Token::LeftParen) => true,
-                    _ => false,
+                let is_function = match self.peek_ahead(1) {
+                    Some(Token::Ampersand) => matches!(self.peek_ahead(3), Some(Token::LeftParen)),
+                    _ => matches!(self.peek_ahead(2), Some(Token::LeftParen)),
                 };
 
                 if is_function {
@@ -201,11 +231,6 @@ impl Parser {
                 }
             }
 
-            // Token::NewLine => {
-            //     self.line += 1;
-            //     self.advance();
-            //     Ok(Statement::NewLine)
-            // }
             _ => self.parse_expression_statement(),
         }
     }
@@ -273,6 +298,18 @@ impl Parser {
 
     fn parse_expression(&mut self) -> Result<Expr> {
         match self.peek() {
+            Token::Ampersand => {
+                self.advance();
+                let name = self.parse_identifier()?;
+                Ok(Expr::IdentifierReference(name))
+            }
+
+            Token::Star => {
+                self.advance();
+                let name = self.parse_identifier()?;
+                Ok(Expr::IdentifierDereference(name))
+            }
+
             Token::Integer(n) => {
                 let n = *n;
                 self.advance();
@@ -282,12 +319,15 @@ impl Parser {
             Token::Identifier(name) => {
                 let n = name.clone();
 
-                if matches!(self.peek_ahead(1), Some(Token::LeftParen)) {
-                    self.advance();
+                self.advance();
+
+                if matches!(self.peek(), Token::LeftParen) {
                     self.advance();
 
-                    let is_builtin_function =
-                        matches!(n.as_str(), "iprint" | "sprint" | "iread" | "sread" | "irandrange");
+                    let is_builtin_function = matches!(
+                        n.as_str(),
+                        "iprint" | "sprint" | "iread" | "sread" | "irandrange"
+                    );
 
                     let builtin_function_type = match n.as_str() {
                         "iprint" => Some(BuiltinFunctionType::IntegerPrint),
@@ -300,15 +340,36 @@ impl Parser {
 
                     let mut arguments: Vec<Argument> = Vec::new();
 
+                    let typ_v: Vec<Type> = match self.function_param_types.get(&n) {
+                        Some(vec) => vec.clone(),
+                        None => {
+                            return Err(CompileError::ParseError {
+                                message: format!("Call to undeclared function '{}'", n),
+                                line: self.line,
+                            });
+                        }
+                    };
+
+                    let mut i = 0;
                     if self.peek() != &Token::RightParen {
                         loop {
                             let expr = self.parse_expression()?;
-                            arguments.push(Argument { expr });
+
+                            let typ = match typ_v.get(i) {
+                                Some(t) => t,
+                                None => panic!("not this either"),
+                            };
+
+                            arguments.push(Argument {
+                                expr,
+                                typ: typ.clone(),
+                            });
 
                             if !matches!(self.peek(), Token::Comma) {
                                 break;
                             }
                             self.advance();
+                            i += 1;
                         }
                     }
 
@@ -321,10 +382,65 @@ impl Parser {
                         builtin_function_type,
                     };
                     return Ok(call_expr);
+                } else if matches!(self.peek(), Token::LeftBracket) {
+                    self.advance();
+
+                    let array_name = n;
+                    let indexer = Box::new(self.parse_expression()?);
+
+                    self.expect(Token::RightBracket, "parse_expression")?;
+
+                    return Ok(Expr::ArrayIndex {
+                        array_name,
+                        indexer,
+                    });
                 }
 
-                self.advance();
                 Ok(Expr::Identifier(n))
+            }
+
+            Token::LeftBrace => {
+                self.advance();
+
+                let mut exprs: Vec<Box<Expr>> = Vec::new();
+                let mut len = 0;
+
+                while self.peek() != &Token::RightBrace {
+                    let expr = self.parse_expression()?;
+
+                    exprs.push(Box::new(expr));
+                    len += 1;
+
+                    if self.peek() == &Token::RightBrace {
+                        break;
+                    }
+
+                    self.expect(Token::Comma, "parse_expression")?;
+                }
+
+                self.expect(Token::RightBrace, "parse_expression")?;
+
+                if self.peek() == &Token::LeftBracket {
+                    self.advance();
+
+                    if let Expr::Integer(n) = self.parse_expression()? {
+                        if n < 0 {
+                            return Err(CompileError::ParseError {
+                                message: format!("{} must be >= 0 in array init", n),
+                                line: self.line,
+                            });
+                        }
+
+                        len = n as usize;
+                    }
+
+                    self.expect(Token::RightBracket, "parse_expression")?;
+                }
+
+                Ok(Expr::ArrayInitializer {
+                    body: exprs,
+                    size: len,
+                })
             }
 
             Token::StringLiteral(str) => {
@@ -388,6 +504,49 @@ impl Parser {
         Ok(Statement::VariableAssignment {
             identifier: name,
             operation,
+            is_dereference: false,
+            is_array_index: false,
+            indexer: Expr::Empty,
+        })
+    }
+
+    fn parse_shift(&mut self) -> Result<Statement> {
+        self.backtrack();
+
+        let identifier = self.parse_expression()?;
+
+        let name = if let Expr::Identifier(n) = &identifier {
+            n.clone()
+        } else {
+            return Err(CompileError::ParseError {
+                message: "Left side of shift must be an identifier".to_string(),
+                line: self.line,
+            });
+        };
+
+        let operation = match self.peek() {
+            Token::LeftShift => Expr::BitwiseShift {
+                identifier: Box::new(identifier),
+                shift_type: BitwiseShiftType::LeftShift,
+            },
+            Token::RightShift => Expr::BitwiseShift {
+                identifier: Box::new(identifier),
+                shift_type: BitwiseShiftType::RightShift,
+            },
+
+            _ => Expr::Empty,
+        };
+
+        self.advance();
+
+        self.expect(Token::Semicolon, "parse_shift")?;
+
+        Ok(Statement::VariableAssignment {
+            identifier: name,
+            operation,
+            is_dereference: false,
+            is_array_index: false,
+            indexer: Expr::Empty,
         })
     }
 
@@ -426,8 +585,24 @@ impl Parser {
 
         self.expect(Token::Semicolon, "parse_assignment")?;
 
+        let mut is_dereference = false;
+        let mut is_array_index = false;
+
+        let mut indexer = Expr::Empty;
+
         let name = if let Expr::Identifier(name) = identifier {
             name
+        } else if let Expr::IdentifierDereference(name) = identifier {
+            is_dereference = true;
+            name
+        } else if let Expr::ArrayIndex {
+            array_name,
+            indexer: array_indexer,
+        } = identifier
+        {
+            is_array_index = true;
+            indexer = *array_indexer;
+            array_name
         } else {
             return Err(CompileError::ParseError {
                 message: "Left side of assignment must be an identifier".to_string(),
@@ -438,6 +613,9 @@ impl Parser {
         Ok(Statement::VariableAssignment {
             identifier: name,
             operation: value,
+            is_dereference,
+            is_array_index,
+            indexer,
         })
     }
 
@@ -448,6 +626,8 @@ impl Parser {
             return self.parse_assignment(expr);
         } else if matches!(self.peek(), Token::PlusPlus | Token::MinusMinus) {
             return self.parse_unary();
+        } else if matches!(self.peek(), Token::LeftShift | Token::RightShift) {
+            return self.parse_shift();
         }
 
         self.expect(Token::Semicolon, "parse_expression_statement")?;
@@ -596,6 +776,9 @@ impl Parser {
             return Ok(Statement::VariableAssignment {
                 identifier: name,
                 operation: value,
+                is_dereference: false,
+                is_array_index: false,
+                indexer: Expr::Empty,
             });
         } else if matches!(self.peek(), Token::PlusPlus | Token::MinusMinus) {
             // Unary operation without semicolon
@@ -631,6 +814,9 @@ impl Parser {
             return Ok(Statement::VariableAssignment {
                 identifier: name,
                 operation,
+                is_dereference: false,
+                is_array_index: false,
+                indexer: Expr::Empty,
             });
         }
 
@@ -683,15 +869,36 @@ impl Parser {
 
         let mut arguments: Vec<Argument> = Vec::new();
 
+        let typ_v: Vec<Type> = match self.function_param_types.get(&function_name) {
+            Some(vec) => vec.clone(),
+            None => {
+                return Err(CompileError::ParseError {
+                    message: format!("Call to undeclared function '{}'", function_name),
+                    line: self.line,
+                });
+            }
+        };
+
+        let mut i = 0;
         if self.peek() != &Token::RightParen {
             loop {
                 let expr = self.parse_expression()?;
-                arguments.push(Argument { expr });
+
+                let typ = match typ_v.get(i) {
+                    Some(t) => t,
+                    None => panic!("not this either"),
+                };
+
+                arguments.push(Argument {
+                    expr,
+                    typ: typ.clone(),
+                });
 
                 if !matches!(self.peek(), Token::Comma) {
                     break;
                 }
                 self.advance();
+                i += 1;
             }
         }
 
